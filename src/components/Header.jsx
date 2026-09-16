@@ -1,6 +1,6 @@
 import React from 'react';
-import { Utensils, Users, Key, Flame, ShieldAlert } from 'lucide-react';
-import { getStoredApiKey } from '../services/gemini';
+import { Utensils, Users, Key, Sparkles, ChefHat } from 'lucide-react';
+import { getStoredApiKey, CHEF_TITLES } from '../services/gemini';
 
 export const STAYCATION_USERS = [
   'Sushmitha',
@@ -15,6 +15,7 @@ export const STAYCATION_USERS = [
 export default function Header({ selectedUser, onSelectUser, onOpenKeyModal }) {
   const hasKey = Boolean(getStoredApiKey());
   const isSushmitha = selectedUser === 'Sushmitha';
+  const chefTitle = selectedUser ? CHEF_TITLES[selectedUser] : null;
 
   return (
     <header className="header">
@@ -29,29 +30,29 @@ export default function Header({ selectedUser, onSelectUser, onOpenKeyModal }) {
               <Users size={14} /> 6 People Multiplier
             </span>
           </h1>
+          {chefTitle && (
+            <div style={{ fontSize: '0.8rem', color: isSushmitha ? '#ff9d76' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>
+              <ChefHat size={13} /> Active Chef: <strong>{selectedUser}</strong> — <em>{chefTitle}</em>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="header-controls">
         <div className={`user-selector-wrapper ${isSushmitha ? 'is-sushmitha' : ''}`}>
-          <span className="user-label">Who is adding?</span>
+          <span className="user-label">Select Chef:</span>
           <select
             className="user-select"
             value={selectedUser}
             onChange={(e) => onSelectUser(e.target.value)}
           >
+            <option value="">-- Select Your Name --</option>
             {STAYCATION_USERS.map((user) => (
               <option key={user} value={user}>
-                {user === 'Sushmitha' ? 'Sushmitha 🌶️' : user}
+                {user === 'Sushmitha' ? 'Sushmitha 🍕🔥' : user}
               </option>
             ))}
           </select>
-
-          {isSushmitha && (
-            <span className="sushmitha-alert-tag" title="Sushmitha Roast Persona Active!">
-              <Flame size={13} /> Roast Mode Active
-            </span>
-          )}
         </div>
 
         <button className="api-key-btn" onClick={onOpenKeyModal} title="Configure Gemini API Key">

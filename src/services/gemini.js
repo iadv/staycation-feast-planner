@@ -17,31 +17,27 @@ export const setStoredApiKey = (key) => {
   }
 };
 
-// Array of witty doubting questions for Sushmitha
-export const SUSHMITHA_ROAST_QUESTIONS = [
-  "Wait, Sushmitha... 🛑 before we add anything to the staycation menu, are you *sure* you've cooked this before without setting off smoke alarms? 🍕🔥",
-  "Hold up, Sushmitha! 🚨 On a scale of 1 to 'Emergency Pizza Order', how confident are you in this dish?",
-  "Sushmitha! 🕵️‍♀️ Quick security check: does this recipe involve actual cooking, or are you just boiling water and hoping for the best?",
-  "Are we taking a staycation health risk with your cooking, Sushmitha? 😜 Tell me what dish you're attempting to add!",
-  "Wait, Sushmitha... did you find this recipe on TikTok 5 minutes ago, or have you actually tested it on live humans before? 🧪"
-];
+// Fancy creative titles for chefs
+export const CHEF_TITLES = {
+  'Sushmitha': 'Master of Emergency Pizza 🍕🔥',
+  'Nynika': 'Artisan Gourmet Specialist 👩‍🍳✨',
+  'Pooja': 'Culinary Queen 👑🍳',
+  'Pratyusha': 'Master Spice Crafter 🌶️✨',
+  'Anvith': 'Grill & Roast Virtuoso 🍖🔥',
+  'Hari Pavan': 'Feast Grandmaster 🏺📜',
+  'Nithin': 'Street Food Connoisseur 🌮🍟'
+};
 
-// Quick reply responses for Sushmitha
+// Quick reply responses for Sushmitha after roast
 export const SUSHMITHA_QUICK_REPLIES = [
   "I swear I can cook this! 😇",
   "Only burnt it once, trust me! 😜",
-  "It's a secret family recipe! 🤫",
-  "Google will guide me! 📱",
+  "It's 100% safe, no alarms! 🤫",
   "If it fails, we order pizza! 🍕"
 ];
 
-export const getRandomSushmithaRoast = () => {
-  const index = Math.floor(Math.random() * SUSHMITHA_ROAST_QUESTIONS.length);
-  return SUSHMITHA_ROAST_QUESTIONS[index];
-};
-
 /**
- * Main Gemini AI Parsing logic
+ * Main Gemini AI Parsing logic (Ingredients without quantities)
  */
 export async function parseDishWithGemini(userText, chefName) {
   const apiKey = getStoredApiKey();
@@ -58,42 +54,37 @@ export async function parseDishWithGemini(userText, chefName) {
     const isSushmitha = chefName === 'Sushmitha';
 
     const systemPrompt = `
-You are Chef Staycation AI, managing a staycation feast for 6 people.
-Selected Chef: ${chefName}.
+You are Chef Staycation AI managing a staycation menu for 6 people.
+Selected Chef: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
 
 ${
   isSushmitha
-    ? `SPECIAL PERSONA: ${chefName} is Sushmitha! You must playfully and wittily tease/doubt her cooking skills in your response text while extracting her dish accurately. Keep it light, funny, and friendly.`
+    ? `SPECIAL PERSONA FOR SUSHMITHA: Wittily tease and doubt her cooking skills for the dish she just mentioned, asking if she's cooked it before or if smoke alarms will go off!`
     : `Keep your tone friendly, enthusiastic, and staycation-themed.`
 }
 
-The user will describe a dish they want to make along with its ingredients in natural language.
-Extract the details into a valid JSON object strictly matching this schema:
+Extract the dish details from user natural language into a JSON object matching this schema:
 
 {
   "dishName": "Name of Dish",
   "mealType": "Breakfast | Lunch | Dinner | Snack | Dessert",
-  "servingsBase": 6,
   "ingredients": [
     {
-      "name": "Ingredient name (clean, e.g. Tomato)",
-      "quantity": 500,
-      "unit": "g | kg | ml | L | pcs | tbsp | tsp | cup | pinch",
+      "name": "Ingredient Name (e.g. Rice, Lentils, Butter, Cheese)",
       "category": "Produce | Dairy | Meat & Protein | Bakery | Pantry & Spices | Beverages"
     }
   ],
-  "aiReplyMessage": "Your reply message here"
+  "aiReplyMessage": "Your AI reply message here"
 }
 
 IMPORTANT REQUIREMENTS:
-1. Normalize ingredient quantities for a total of 6 staycationers.
-2. Output ONLY the JSON block. Do not wrap in extra markdown or commentary outside JSON.
+1. Do NOT include quantities or units in ingredients. Just clean ingredient names!
+2. Output ONLY valid JSON matching the schema. Do not output extra text outside JSON.
 `;
 
     const result = await model.generateContent([systemPrompt, userText]);
     const responseText = result.response.text();
     
-    // Clean JSON markdown formatting if present
     const cleanedText = responseText
       .replace(/```json/g, '')
       .replace(/```/g, '')
@@ -111,106 +102,75 @@ IMPORTANT REQUIREMENTS:
 }
 
 /**
- * Smart Fallback Parser when API Key is not set or API call fails
+ * Smart Fallback Parser when API Key is missing or call fails
  */
 function fallbackParseDish(userText, chefName) {
   const isSushmitha = chefName === 'Sushmitha';
 
-  // Basic regex extraction
   const lower = userText.toLowerCase();
   
-  // Guess meal type
   let mealType = 'Lunch';
-  if (lower.includes('breakfast') || lower.includes('pancake') || lower.includes('egg') || lower.includes('dosa') || lower.includes('idli')) {
+  if (lower.includes('breakfast') || lower.includes('pancake') || lower.includes('egg') || lower.includes('uggu') || lower.includes('dosa')) {
     mealType = 'Breakfast';
-  } else if (lower.includes('dinner') || lower.includes('biryani') || lower.includes('curry') || lower.includes('pulao')) {
+  } else if (lower.includes('dinner') || lower.includes('biryani') || lower.includes('curry') || lower.includes('pasta')) {
     mealType = 'Dinner';
-  } else if (lower.includes('snack') || lower.includes('fries') || lower.includes('samosa') || lower.includes('chips')) {
+  } else if (lower.includes('snack') || lower.includes('fries') || lower.includes('orange')) {
     mealType = 'Snack';
-  } else if (lower.includes('dessert') || lower.includes('cake') || lower.includes('ice cream') || lower.includes('sweet') || lower.includes('halwa')) {
+  } else if (lower.includes('dessert') || lower.includes('cake') || lower.includes('ice cream') || lower.includes('sweet')) {
     mealType = 'Dessert';
   }
 
   // Extract dish name
   let dishName = userText.split(',')[0].replace(/(making|cooking|add|want to make|dish|for dinner|for lunch)/gi, '').trim();
   if (!dishName || dishName.length < 2) {
-    dishName = `${chefName}'s Special Recipe`;
+    dishName = `${chefName}'s Special Dish`;
   }
-  // Capitalize dish name
   dishName = dishName.charAt(0).toUpperCase() + dishName.slice(1);
 
-  // Extract potential ingredients
+  // Extract ingredient names without quantities
   const ingredients = [];
   const parts = userText.split(/,|\n|and/);
 
   parts.forEach(part => {
-    const trimmed = part.trim();
-    if (trimmed && !trimmed.toLowerCase().includes('making') && !trimmed.toLowerCase().includes('cooking')) {
-      // Check for quantity
-      const match = trimmed.match(/(\d+(?:\.\d+)?)\s*([a-zA-Z]*)\s+(.+)/);
-      if (match) {
-        const qty = parseFloat(match[1]) || 1;
-        const rawUnit = match[2].toLowerCase();
-        const name = match[3].replace(/(scaled|for 6|people)/gi, '').trim();
-
-        let unit = 'pcs';
-        if (['g', 'gram', 'grams'].includes(rawUnit)) unit = 'g';
-        else if (['kg', 'kilo', 'kilograms'].includes(rawUnit)) unit = 'kg';
-        else if (['ml'].includes(rawUnit)) unit = 'ml';
-        else if (['l', 'liter', 'liters'].includes(rawUnit)) unit = 'L';
-        else if (['tbsp', 'tablespoon'].includes(rawUnit)) unit = 'tbsp';
-        else if (['tsp', 'teaspoon'].includes(rawUnit)) unit = 'tsp';
-
-        // Assign category
-        let category = 'Pantry & Spices';
-        const nLower = name.toLowerCase();
-        if (nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('paneer') || nLower.includes('tofu')) {
-          category = nLower.includes('paneer') ? 'Dairy' : 'Meat & Protein';
-        } else if (nLower.includes('milk') || nLower.includes('curd') || nLower.includes('butter') || nLower.includes('cheese') || nLower.includes('cream')) {
-          category = 'Dairy';
-        } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('ginger') || nLower.includes('chilli') || nLower.includes('coriander') || nLower.includes('potato') || nLower.includes('lemon')) {
-          category = 'Produce';
-        } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti') || nLower.includes('pav')) {
-          category = 'Bakery';
-        } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water') || nLower.includes('beer')) {
-          category = 'Beverages';
-        }
-
-        ingredients.push({
-          name: name.charAt(0).toUpperCase() + name.slice(1),
-          quantity: qty * 6, // scale default for 6 people
-          unit,
-          category
-        });
-      } else if (trimmed.length > 2 && !trimmed.toLowerCase().includes(dishName.toLowerCase())) {
-        ingredients.push({
-          name: trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
-          quantity: 6, // default 6 portion items
-          unit: 'pcs',
-          category: 'Pantry & Spices'
-        });
+    let name = part.replace(/\d+\s*(g|kg|ml|l|pcs|tbsp|tsp|cup|cups|grams|kilos)?/gi, '').replace(/(making|cooking|with|need|needs|requires|for 6|people)/gi, '').trim();
+    
+    if (name && name.length > 1 && !name.toLowerCase().includes(dishName.toLowerCase())) {
+      let category = 'Pantry & Spices';
+      const nLower = name.toLowerCase();
+      if (nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('paneer')) {
+        category = nLower.includes('paneer') ? 'Dairy' : 'Meat & Protein';
+      } else if (nLower.includes('milk') || nLower.includes('curd') || nLower.includes('butter') || nLower.includes('cheese') || nLower.includes('cream')) {
+        category = 'Dairy';
+      } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('orange') || nLower.includes('lemon') || nLower.includes('lentil') || nLower.includes('rice')) {
+        category = 'Produce';
+      } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti')) {
+        category = 'Bakery';
+      } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water')) {
+        category = 'Beverages';
       }
+
+      ingredients.push({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        category
+      });
     }
   });
 
-  // If no specific ingredients found, add baseline
   if (ingredients.length === 0) {
     ingredients.push(
-      { name: 'Main Spice Mix & Seasoning', quantity: 1, unit: 'pack', category: 'Pantry & Spices' },
-      { name: 'Cooking Oil / Ghee', quantity: 200, unit: 'ml', category: 'Pantry & Spices' }
+      { name: 'Fresh Ingredients & Spices', category: 'Pantry & Spices' }
     );
   }
 
   const aiReplyMessage = isSushmitha
-    ? `Haha! Alright Sushmitha, I've added "${dishName}" to the staycation menu for 6 people! (We'll keep the fire extinguisher handy just in case! 🔥😜)`
-    : `Awesome! "${dishName}" has been added to the staycation feast for 6 people!`;
+    ? `Wait, Sushmitha... are you SURE you've cooked "${dishName}" before without setting off smoke alarms? 🍕🔥 On a scale from boiled water to emergency pizza, how safe are we? 😜 (Added to menu!)`
+    : `Awesome! "${dishName}" added to the staycation menu by Chef ${chefName}!`;
 
   return {
     success: true,
     data: {
       dishName,
       mealType,
-      servingsBase: 6,
       ingredients,
       aiReplyMessage
     }

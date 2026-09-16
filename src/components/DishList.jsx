@@ -1,5 +1,6 @@
 import React from 'react';
-import { Utensils, Trash2, Flame, Sparkles, ChefHat } from 'lucide-react';
+import { Utensils, Trash2, Flame, ChefHat, Sparkles } from 'lucide-react';
+import { CHEF_TITLES } from '../services/gemini';
 
 export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
   return (
@@ -12,11 +13,6 @@ export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
             {dishes.length} {dishes.length === 1 ? 'Dish' : 'Dishes'}
           </span>
         </div>
-        {dishes.length > 0 && (
-          <button className="sample-menu-btn" onClick={onLoadSampleMenu} title="Reset to sample staycation dishes">
-            + Reset Sample Menu
-          </button>
-        )}
       </div>
 
       {dishes.length === 0 ? (
@@ -24,16 +20,15 @@ export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
           <span className="empty-icon">🍳</span>
           <p style={{ fontWeight: 600, color: 'white' }}>No dishes added yet for the staycation!</p>
           <p style={{ fontSize: '0.82rem' }}>
-            Select a staycationer on the left and describe what you're cooking in the chat!
+            Select your name from the top dropdown and enter what you're cooking in the chat!
           </p>
-          <button className="sample-menu-btn" onClick={onLoadSampleMenu}>
-            ✨ Load Sample Staycation Menu (6 People)
-          </button>
         </div>
       ) : (
         <div className="dish-grid">
           {dishes.map((dish) => {
             const isSushmitha = dish.chef === 'Sushmitha';
+            const creativeTitle = CHEF_TITLES[dish.chef] || 'Staycation Chef';
+
             return (
               <div
                 key={dish.id}
@@ -42,12 +37,14 @@ export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
                 <div className="dish-header-row">
                   <div>
                     <h3 className="dish-name">{dish.dishName}</h3>
-                    <div className="dish-meta">
+                    <div className="dish-meta" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem', marginTop: '0.25rem' }}>
                       <span className={`chef-badge ${isSushmitha ? 'sushmitha' : ''}`}>
                         {isSushmitha ? <Flame size={12} /> : <ChefHat size={12} />}
                         Chef {dish.chef}
                       </span>
-                      <span>• {dish.mealType || 'Meal'}</span>
+                      <span style={{ fontSize: '0.74rem', color: isSushmitha ? '#ff9d76' : '#cbd5e1', fontWeight: 600 }}>
+                        {creativeTitle}
+                      </span>
                     </div>
                   </div>
                   <button
@@ -59,9 +56,9 @@ export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
                   </button>
                 </div>
 
-                <div className="dish-ingredients-preview">
-                  <strong>Ingredients (for 6):</strong>{' '}
-                  {dish.ingredients.map((ing) => `${ing.quantity}${ing.unit} ${ing.name}`).join(', ')}
+                <div className="dish-ingredients-preview" style={{ marginTop: '0.4rem' }}>
+                  <strong>Ingredients:</strong>{' '}
+                  {dish.ingredients.map((ing) => ing.name).join(', ')}
                 </div>
               </div>
             );

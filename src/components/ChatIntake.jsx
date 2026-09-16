@@ -3,28 +3,38 @@ import { Send, Bot, User, Sparkles, Flame, RefreshCw, AlertCircle } from 'lucide
 import confetti from 'canvas-confetti';
 import { 
   parseDishWithGemini, 
-  getRandomSushmithaRoast, 
-  SUSHMITHA_QUICK_REPLIES 
+  SUSHMITHA_QUICK_REPLIES,
+  CHEF_TITLES
 } from '../services/gemini';
 
 export default function ChatIntake({ selectedUser, onAddDish }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const chatEndRef = useRef(null);
 
   const isSushmitha = selectedUser === 'Sushmitha';
 
-  // Initialize or reset greeting message when selected user changes
+  // Initialize greeting message when active chef changes
   useEffect(() => {
-    if (isSushmitha) {
-      const roastQuestion = getRandomSushmithaRoast();
+    setErrorMsg('');
+    if (!selectedUser) {
       setMessages([
         {
           id: Date.now(),
           sender: 'ai',
-          text: roastQuestion,
-          isRoast: true
+          text: `👋 Welcome to the Staycation Feast Planner! Please select your name from the top dropdown to start entering dishes.`,
+          isRoast: false
+        }
+      ]);
+    } else if (isSushmitha) {
+      setMessages([
+        {
+          id: Date.now(),
+          sender: 'ai',
+          text: `Hey Sushmitha! 👋 Welcome to the staycation kitchen! What delicious dish are you planning to cook for us today?`,
+          isRoast: false
         }
       ]);
     } else {
@@ -32,14 +42,13 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
         {
           id: Date.now(),
           sender: 'ai',
-          text: `Hey ${selectedUser}! 👋 What delicious dish are you cooking for our 6-person staycation? Tell me what you're making and any ingredients!`,
+          text: `Hey ${selectedUser}! 👋 (${CHEF_TITLES[selectedUser] || 'Chef'}) What dish are you bringing to our staycation menu?`,
           isRoast: false
         }
       ]);
     }
   }, [selectedUser]);
 
-  // Scroll to bottom on new message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
@@ -54,7 +63,15 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
 
   const handleSendMessage = async (textToSend) => {
     const text = textToSend || inputText;
+
+    // VALIDATION: Enforce selecting chef before chatting
+    if (!selectedUser) {
+      setErrorMsg('⚠️ Please select your name from the dropdown above before entering a dish!');
+      return;
+    }
+
     if (!text.trim() || loading) return;
+    setErrorMsg('');
 
     const userMessageObj = {
       id: Date.now(),
@@ -78,16 +95,14 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
           addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
-        // Add dish to parent global state
         onAddDish(dishData);
         triggerConfetti();
 
         const aiReplyObj = {
           id: Date.now() + 1,
           sender: 'ai',
-          text: result.data.aiReplyMessage || `Added ${dishData.dishName} for 6 people!`,
-          isRoast: isSushmitha,
-          dishAdded: dishData.dishName
+          text: result.data.aiReplyMessage || `Added ${dishData.dishName} to the menu!`,
+          isRoast: isSushmitha
         };
 
         setMessages((prev) => [...prev, aiReplyObj]);
@@ -97,7 +112,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
           {
             id: Date.now() + 1,
             sender: 'ai',
-            text: `Oops! I couldn't quite understand that recipe. Try giving me the dish name and ingredients!`,
+            text: `Oops! Could not understand that recipe. Please mention the dish name and ingredients!`,
             isRoast: false
           }
         ]);
@@ -109,7 +124,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
         {
           id: Date.now() + 1,
           sender: 'ai',
-          text: `Something went wrong while parsing the recipe. Please try again!`,
+          text: `An error occurred while parsing the dish. Please try again!`,
           isRoast: false
         }
       ]);
@@ -126,9 +141,27 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
           <span>Natural Language Intake</span>
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          Active Chef: <strong style={{ color: isSushmitha ? 'var(--sushmitha-orange)' : 'white' }}>{selectedUser}</strong>
+          Active Chef: {selectedUser ? <strong style={{ color: isSushmitha ? 'var(--sushmitha-orange)' : 'white' }}>{selectedUser}</strong> : <span style={{ color: 'var(--accent-rose)' }}>None Selected</span>}
         </div>
       </div>
+
+      {/* Error Alert Box */}
+      {errorMsg && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.15)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          color: '#fca5a5',
+          padding: '0.65rem 1rem',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <AlertCircle size={16} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
 
       {/* Messages Thread */}
       <div className="chat-messages">
@@ -173,7 +206,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
             </div>
             <div className="bubble-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <RefreshCw className="animate-spin" size={16} />
-              <span>Analyzing recipe & scaling for 6 staycationers...</span>
+              <span>Analyzing recipe for staycation menu...</span>
             </div>
           </div>
         )}
@@ -181,35 +214,37 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Witty Quick Replies for Sushmitha or sample prompt suggestions */}
-      <div className="quick-replies">
-        {isSushmitha ? (
-          SUSHMITHA_QUICK_REPLIES.map((reply, idx) => (
-            <button
-              key={idx}
-              className="chip-btn sushmitha-chip"
-              onClick={() => handleSendMessage(reply)}
-            >
-              <Flame size={13} /> {reply}
-            </button>
-          ))
-        ) : (
-          <>
-            <button
-              className="chip-btn"
-              onClick={() => handleSendMessage(`Making Butter Chicken for dinner with 600g chicken, 200g butter, garlic, cream, naan`)}
-            >
-              🍛 Butter Chicken & Naan
-            </button>
-            <button
-              className="chip-btn"
-              onClick={() => handleSendMessage(`Pancakes for breakfast with 300g flour, 4 eggs, maple syrup, blueberries, butter`)}
-            >
-              🥞 Morning Pancakes
-            </button>
-          </>
-        )}
-      </div>
+      {/* Quick Replies for Sushmitha or sample chips */}
+      {selectedUser && (
+        <div className="quick-replies">
+          {isSushmitha ? (
+            SUSHMITHA_QUICK_REPLIES.map((reply, idx) => (
+              <button
+                key={idx}
+                className="chip-btn sushmitha-chip"
+                onClick={() => handleSendMessage(reply)}
+              >
+                <Flame size={13} /> {reply}
+              </button>
+            ))
+          ) : (
+            <>
+              <button
+                className="chip-btn"
+                onClick={() => handleSendMessage(`Making Pasta with pasta, tomatoes, garlic, cheese`)}
+              >
+                🍝 Pasta & Cheese
+              </button>
+              <button
+                className="chip-btn"
+                onClick={() => handleSendMessage(`Chicken Biryani with rice, chicken, curd, spices`)}
+              >
+                🍛 Chicken Biryani
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Input Form */}
       <div className="chat-input-area">
@@ -224,9 +259,11 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
             type="text"
             className="chat-input"
             placeholder={
-              isSushmitha
-                ? "Reply to AI or type your dish & ingredients..."
-                : `Describe what ${selectedUser} is cooking (e.g. "Making Pasta with 500g pasta, tomatoes, cheese...")`
+              !selectedUser
+                ? "Select your name from the top dropdown first..."
+                : isSushmitha
+                ? "Enter your dish name & ingredients..."
+                : `Describe what ${selectedUser} is cooking (e.g. "Making Uggu with Rice and Lentils")...`
             }
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ShoppingBag, Check, Copy, Download, Users, Layers } from 'lucide-react';
+import { ShoppingBag, Check, Copy, Download, Utensils } from 'lucide-react';
 
 export default function IngredientsAggregator({ dishes }) {
   const [checkedItems, setCheckedItems] = useState({});
 
-  // Consolidate & aggregate ingredients across all dishes
+  // Consolidate ingredients across dishes and track which dishes require them
   const aggregatedCategories = useMemo(() => {
     const map = {};
 
@@ -16,17 +16,15 @@ export default function IngredientsAggregator({ dishes }) {
         if (!map[key]) {
           map[key] = {
             name: ing.name,
-            quantity: 0,
-            unit: ing.unit || 'pcs',
-            category: cat
+            category: cat,
+            dishes: new Set()
           };
         }
 
-        map[key].quantity += Number(ing.quantity) || 1;
+        map[key].dishes.add(dish.dishName);
       });
     });
 
-    // Group by category
     const categories = {
       'Produce': [],
       'Dairy': [],
@@ -38,13 +36,15 @@ export default function IngredientsAggregator({ dishes }) {
 
     Object.values(map).forEach((item) => {
       const categoryKey = categories[item.category] ? item.category : 'Pantry & Spices';
-      categories[categoryKey].push(item);
+      categories[categoryKey].push({
+        name: item.name,
+        dishes: Array.from(item.dishes)
+      });
     });
 
     return categories;
   }, [dishes]);
 
-  // Total count of unique ingredients
   const totalItemsCount = useMemo(() => {
     return Object.values(aggregatedCategories).reduce(
       (acc, items) => acc + items.length,
@@ -52,7 +52,6 @@ export default function IngredientsAggregator({ dishes }) {
     );
   }, [aggregatedCategories]);
 
-  // Count checked items
   const checkedCount = useMemo(() => {
     return Object.keys(checkedItems).filter((key) => checkedItems[key]).length;
   }, [checkedItems]);
@@ -73,35 +72,33 @@ export default function IngredientsAggregator({ dishes }) {
     'Beverages': '🥤'
   };
 
-  // Copy list to clipboard
   const handleCopyList = () => {
-    let text = `🛒 STAYCATION SHOPPING LIST FOR 6 PEOPLE\n\n`;
+    let text = `🛒 STAYCATION COLLECTIVE GROCERY LIST (FOR 6 PEOPLE)\n\n`;
     Object.entries(aggregatedCategories).forEach(([category, items]) => {
       if (items.length > 0) {
         text += `--- ${category.toUpperCase()} ---\n`;
         items.forEach((item) => {
           const isDone = checkedItems[item.name] ? '[x]' : '[ ]';
-          text += `${isDone} ${item.quantity} ${item.unit} - ${item.name}\n`;
+          text += `${isDone} ${item.name} (For: ${item.dishes.join(', ')})\n`;
         });
         text += `\n`;
       }
     });
 
     navigator.clipboard.writeText(text);
-    alert('Copied 6-person staycation shopping list to clipboard!');
+    alert('Copied staycation shopping list to clipboard!');
   };
 
-  // Download list as text file
   const handleDownloadList = () => {
     let text = `=======================================\n`;
-    text += ` 🏖️ STAYCATION SHOPPING LIST (6 PEOPLE) \n`;
+    text += ` 🏖️ STAYCATION COLLECTIVE GROCERY LIST \n`;
     text += `=======================================\n\n`;
 
     Object.entries(aggregatedCategories).forEach(([category, items]) => {
       if (items.length > 0) {
         text += `[ ${category.toUpperCase()} ]\n`;
         items.forEach((item) => {
-          text += `  • ${item.quantity} ${item.unit} - ${item.name}\n`;
+          text += `  • ${item.name} (Dish: ${item.dishes.join(', ')})\n`;
         });
         text += `\n`;
       }
@@ -110,7 +107,7 @@ export default function IngredientsAggregator({ dishes }) {
     const element = document.createElement('a');
     const file = new Blob([text], { type: 'text/plain' });
     element.href = URL.createObjectURL(file);
-    element.download = `staycation_grocery_list_6people.txt`;
+    element.download = `staycation_collective_grocery_list.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -124,9 +121,6 @@ export default function IngredientsAggregator({ dishes }) {
           <span>Collective Ingredients for 6 People</span>
         </div>
         <div className="ingredients-toolbar">
-          <span className="badge-scale">
-            <Users size={13} /> Scaled for 6
-          </span>
           <button className="action-icon-btn" onClick={handleCopyList} title="Copy list to clipboard">
             <Copy size={14} /> Copy
           </button>
@@ -140,14 +134,14 @@ export default function IngredientsAggregator({ dishes }) {
         <div className="empty-state">
           <span className="empty-icon">🛒</span>
           <p style={{ fontWeight: 600, color: 'white' }}>Shopping list is currently empty</p>
-          <p style={{ fontSize: '0.82rem' }}>Add dishes on the left to generate the aggregated grocery list!</p>
+          <p style={{ fontSize: '0.82rem' }}>Select a chef on the left and enter dishes to generate ingredients!</p>
         </div>
       ) : (
         <div className="categories-container">
           {/* Progress bar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              <span>Shopping Progress</span>
+              <span>Grocery Progress</span>
               <span>{checkedCount} / {totalItemsCount} items gathered</span>
             </div>
             <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '99px', overflow: 'hidden' }}>
@@ -172,26 +166,50 @@ export default function IngredientsAggregator({ dishes }) {
                   <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>({items.length})</span>
                 </h4>
 
-                <ul className="ingredient-list">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {items.map((item, index) => {
                     const isChecked = Boolean(checkedItems[item.name]);
                     return (
-                      <li
+                      <div
                         key={index}
                         className={`ingredient-item ${isChecked ? 'checked' : ''}`}
                         onClick={() => toggleCheck(item.name)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.55rem 0.85rem' }}
                       >
-                        <div className="checkbox-custom">
-                          {isChecked && <Check size={12} />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div className="checkbox-custom">
+                            {isChecked && <Check size={12} />}
+                          </div>
+                          <span className="item-name" style={{ fontWeight: 600, color: 'white', fontSize: '0.9rem' }}>
+                            {item.name}
+                          </span>
                         </div>
-                        <span className="item-qty">
-                          {item.quantity} {item.unit}
-                        </span>
-                        <span className="item-name">{item.name}</span>
-                      </li>
+
+                        {/* Dish source cards/tags */}
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {item.dishes.map((dishName, dIdx) => (
+                            <span
+                              key={dIdx}
+                              style={{
+                                background: 'rgba(99, 102, 241, 0.18)',
+                                border: '1px solid rgba(99, 102, 241, 0.35)',
+                                color: '#a5b4fc',
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '99px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                            >
+                              <Utensils size={10} /> {dishName}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
-                </ul>
+                </div>
               </div>
             );
           })}
