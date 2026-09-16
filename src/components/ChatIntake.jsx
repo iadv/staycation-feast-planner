@@ -12,6 +12,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [sushmithaPendingDish, setSushmithaPendingDish] = useState(null);
   const chatEndRef = useRef(null);
 
   const isSushmitha = selectedUser === 'Sushmitha';
@@ -19,6 +20,8 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
   // Initialize greeting message when active chef changes
   useEffect(() => {
     setErrorMsg('');
+    setSushmithaPendingDish(null);
+
     if (!selectedUser) {
       setMessages([
         {
@@ -64,7 +67,6 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
   const handleSendMessage = async (textToSend) => {
     const text = textToSend || inputText;
 
-    // VALIDATION: Enforce selecting chef before chatting
     if (!selectedUser) {
       setErrorMsg('⚠️ Please select your name from the dropdown above before entering a dish!');
       return;
@@ -85,42 +87,97 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
     setLoading(true);
 
     try {
-      const result = await parseDishWithGemini(text, selectedUser);
+      // SUSHMITHA 2-TURN FLOW
+      if (isSushmitha) {
+        if (!sushmithaPendingDish) {
+          // TURN 1 FOR SUSHMITHA: User inputs dish -> AI asks doubting question ("Have you tried it before or experimenting on us?")
+          const result = await parseDishWithGemini(text, 'Sushmitha', 'intake', null);
+          
+          if (result.success && result.data && result.data.isDishEntry !== false) {
+            const pendingData = {
+              ...result.data,
+              id: 'dish_' + Date.now(),
+              chef: 'Sushmitha',
+              addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
 
-      if (result.success && result.data) {
-        const isDishEntry = result.data.isDishEntry !== false && Boolean(result.data.dishName);
+            // Store pending dish without adding to main list yet
+            setSushmithaPendingDish(pendingData);
 
-        // ONLY add dish card if user actually entered a dish (not just saying 'hello')
-        if (isDishEntry) {
-          const dishData = {
-            ...result.data,
-            id: 'dish_' + Date.now(),
-            chef: selectedUser,
-            addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
+            const aiRoastReply = result.data.aiReplyMessage || `Wait, Sushmitha... have you actually tried cooking ${result.data.dishName} before, or are you experimenting on us for this staycation? 🍕🔥 Are you sure the smoke alarms are safe? 😜`;
 
-          onAddDish(dishData);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now() + 1,
+                sender: 'ai',
+                text: aiRoastReply,
+                isRoast: true
+              }
+            ]);
+          } else {
+            // Conversational response if not a dish
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now() + 1,
+                sender: 'ai',
+                text: result.data?.aiReplyMessage || `Hey Sushmitha! What dish are you planning to bring?`,
+                isRoast: false
+              }
+            ]);
+          }
+        } else {
+          // TURN 2 FOR SUSHMITHA: Sushmitha answers/confirms -> AI acknowledges & officially adds dish to menu!
+          const result = await parseDishWithGemini(text, 'Sushmitha', 'awaiting_confirmation', sushmithaPendingDish.dishName);
+
+          // OFFICIALLY ADD DISH TO MENU NOW!
+          onAddDish(sushmithaPendingDish);
           triggerConfetti();
+
+          const aiConfirmReply = result.data?.aiReplyMessage || `Haha alright Sushmitha, I'll trust your word! 😜 Adding "${sushmithaPendingDish.dishName}" to our staycation feast menu!`;
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              sender: 'ai',
+              text: aiConfirmReply,
+              isRoast: true
+            }
+          ]);
+
+          // Clear pending dish for next round
+          setSushmithaPendingDish(null);
         }
-
-        const aiReplyObj = {
-          id: Date.now() + 1,
-          sender: 'ai',
-          text: result.data.aiReplyMessage || `Added ${result.data.dishName} to the menu!`,
-          isRoast: isSushmitha && isDishEntry
-        };
-
-        setMessages((prev) => [...prev, aiReplyObj]);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          {
+        // NORMAL 1-TURN FLOW FOR ALL OTHER CHEFS
+        const result = await parseDishWithGemini(text, selectedUser);
+
+        if (result.success && result.data) {
+          const isDishEntry = result.data.isDishEntry !== false && Boolean(result.data.dishName);
+
+          if (isDishEntry) {
+            const dishData = {
+              ...result.data,
+              id: 'dish_' + Date.now(),
+              chef: selectedUser,
+              addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            onAddDish(dishData);
+            triggerConfetti();
+          }
+
+          const aiReplyObj = {
             id: Date.now() + 1,
             sender: 'ai',
-            text: `Oops! Could not understand that recipe. Please mention the dish name and ingredients!`,
+            text: result.data.aiReplyMessage || `Added ${result.data.dishName} to the menu!`,
             isRoast: false
-          }
-        ]);
+          };
+
+          setMessages((prev) => [...prev, aiReplyObj]);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -267,7 +324,9 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
               !selectedUser
                 ? "Select your name from the top dropdown first..."
                 : isSushmitha
-                ? "Enter your dish name or chat with AI..."
+                ? sushmithaPendingDish
+                  ? "Reply to AI (e.g., 'I swear I can cook it!')..."
+                  : "Enter your dish name..."
                 : `Describe what ${selectedUser} is cooking or say hi...`
             }
             value={inputText}

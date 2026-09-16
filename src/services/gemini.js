@@ -24,54 +24,66 @@ export const CHEF_TITLES = {
   'Nithin': 'Street Food Connoisseur 🌮🍟'
 };
 
-// Quick reply responses for Sushmitha after roast
+// Quick reply responses for Sushmitha after roast question
 export const SUSHMITHA_QUICK_REPLIES = [
   "I swear I can cook this! 😇",
   "Only burnt it once, trust me! 😜",
   "It's 100% safe, no alarms! 🤫",
+  "Google guided me! 📱",
   "If it fails, we order pizza! 🍕"
 ];
 
-// Models to attempt in order of preference
 const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
 
 /**
  * Main Gemini AI Parsing logic
  */
-export async function parseDishWithGemini(userText, chefName) {
-  // 1. First attempt to call Vercel Serverless Function /api/chat
+export async function parseDishWithGemini(userText, chefName, sushmithaStage = null, pendingDishName = null) {
+  // 1. Try Vercel serverless function /api/chat
   try {
     const apiRes = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userText, chefName })
+      body: JSON.stringify({ userText, chefName, sushmithaStage, pendingDishName })
     });
 
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (json.success && json.data) {
-        console.log('Successfully received response from Vercel /api/chat!');
         return json;
       }
     }
   } catch (err) {
-    console.log('/api/chat server endpoint not reachable, running client-side Gemini execution...');
+    console.log('/api/chat endpoint unreachable, using client SDK fallback...');
   }
 
-  // 2. Client-side SDK Execution
+  // 2. Client SDK Fallback
   const apiKey = getStoredApiKey();
-
   if (!apiKey) {
-    console.warn('No Gemini API Key found. Using smart local parser.');
-    return fallbackParseDish(userText, chefName);
+    return fallbackParseDish(userText, chefName, sushmithaStage, pendingDishName);
   }
 
   const isSushmitha = chefName === 'Sushmitha';
   const genAI = new GoogleGenerativeAI(apiKey);
 
+  let sushmithaInstruction = '';
+  if (isSushmitha) {
+    if (sushmithaStage === 'awaiting_confirmation') {
+      sushmithaInstruction = `SUSHMITHA CONFIRMATION TURN (Turn 2):
+Sushmitha just answered your question about cooking ${pendingDishName || 'her dish'}.
+Acknowledge her answer wittily (e.g. "Haha alright Sushmitha, I'll trust your word! Adding it to our staycation menu (keeping emergency pizza ready! 😜)"), and confirm that her dish is now added!`;
+    } else {
+      sushmithaInstruction = `SUSHMITHA DISH INTAKE TURN (Turn 1):
+Sushmitha just named a dish (${userText}). DO NOT confirm adding it yet!
+Ask her a funny, witty doubting question specifically about this dish: "Wait, Sushmitha... have you actually tried cooking ${userText} before, or are you experimenting on us for this staycation? 🍕🔥 Are you sure the smoke alarms are safe?"`;
+    }
+  }
+
   const systemPrompt = `
 You are Chef Staycation AI — a warm, casual staycation buddy planning a 6-person feast with your friends.
 Active Chef chatting with you: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
+
+${sushmithaInstruction}
 
 COMPREHENSIVE CULINARY INGREDIENT GENERATION INSTRUCTION:
 1. Determine if the user is introducing/naming a dish or recipe to add to the menu (e.g. "Chicken Biryani", "Baked Salmon", "Pancakes", "Pasta", "Uggu").
@@ -80,19 +92,11 @@ COMPREHENSIVE CULINARY INGREDIENT GENERATION INSTRUCTION:
 
 2. WHEN "isDishEntry" IS TRUE:
    - Generate a COMPREHENSIVE, REALISTIC culinary grocery list of ALL raw ingredients needed to cook that authentic dish for 6 people!
-   - Do NOT limit the ingredients to only what the user explicitly typed! Expand the dish into its complete ingredient list!
-   - For example:
-     - For "Chicken Biryani": Include Chicken, Basmati Rice, Curd / Yogurt, Onions, Ginger & Garlic, Green Chillies, Mint & Coriander, Tomatoes, Ghee / Cooking Oil, Biryani Spices.
-     - For "Baked Salmon": Include Salmon Fillets, Lemon, Garlic, Olive Oil, Black Pepper & Herbs.
-     - For "Pasta": Include Pasta, Tomatoes, Garlic, Cheese, Olive Oil & Herbs.
-   - Use simple clean ingredient names without long compound descriptors.
 
 3. CHAT STYLE:
    - Chat naturally like a real human friend chatting in WhatsApp or Slack! Do NOT sound like a bot or assistant.
-   - For Sushmitha: Playfully tease her cooking skills for the specific dish she names, wittily asking if she's cooked it before or if the smoke alarm will be tested!
-   - For greetings/casual talk: Reply casually as a friend and ask what dish they're thinking of bringing!
 
-Return ONLY a raw JSON object strictly matching this schema:
+Return ONLY a raw JSON object matching this schema:
 {
   "isDishEntry": true | false,
   "dishName": "Name of Dish or null",
@@ -129,7 +133,7 @@ Return ONLY a raw JSON object strictly matching this schema:
     }
   }
 
-  return fallbackParseDish(userText, chefName);
+  return fallbackParseDish(userText, chefName, sushmithaStage, pendingDishName);
 }
 
 // Culinary dictionary for expanding dishes into real ingredients
@@ -172,22 +176,6 @@ function expandDishToIngredients(dishName) {
       { name: 'Maple Syrup', category: 'Pantry & Spices' },
       { name: 'Butter', category: 'Dairy' }
     ];
-  } else if (lower.includes('pizza')) {
-    return [
-      { name: 'Pizza Dough / Base', category: 'Bakery' },
-      { name: 'Mozzarella Cheese', category: 'Dairy' },
-      { name: 'Tomato Sauce', category: 'Pantry & Spices' },
-      { name: 'Bell Peppers & Mushrooms', category: 'Produce' }
-    ];
-  } else if (lower.includes('uggu')) {
-    return [
-      { name: 'Rice', category: 'Produce' },
-      { name: 'Lentils', category: 'Produce' }
-    ];
-  } else if (lower.includes('orange')) {
-    return [
-      { name: 'Fresh Oranges', category: 'Produce' }
-    ];
   }
 
   const cleanName = dishName
@@ -217,7 +205,7 @@ function detectCategory(name) {
   return 'Pantry & Spices';
 }
 
-function fallbackParseDish(userText, chefName) {
+function fallbackParseDish(userText, chefName, sushmithaStage = null, pendingDishName = null) {
   const isSushmitha = chefName === 'Sushmitha';
   const lower = userText.trim().toLowerCase();
 
@@ -259,9 +247,16 @@ function fallbackParseDish(userText, chefName) {
 
   const ingredients = expandDishToIngredients(dishName);
 
-  let aiReplyMessage = isSushmitha
-    ? `Ooh, ${dishName}! Are you SURE you've cooked this before without triggering smoke alarms, Sushmitha? 😜 On a scale from boiled water to emergency pizza, how safe are we? (Added to the menu!)`
-    : `Awesome choice, ${chefName}! "${dishName}" has been added to our staycation feast menu!`;
+  let aiReplyMessage = '';
+  if (isSushmitha) {
+    if (sushmithaStage === 'awaiting_confirmation') {
+      aiReplyMessage = `Haha alright Sushmitha, I'll trust your word! 😜 Adding "${pendingDishName || dishName}" to the staycation feast menu! (Keeping emergency pizza ready just in case! 🍕)`;
+    } else {
+      aiReplyMessage = `Wait, Sushmitha... have you actually tried cooking "${dishName}" before, or are you experimenting on us for this staycation? 🍕🔥 On a scale from boiled water to emergency pizza, how safe are we? 😜`;
+    }
+  } else {
+    aiReplyMessage = `Awesome choice, ${chefName}! "${dishName}" has been added to our staycation feast menu!`;
+  }
 
   return {
     success: true,

@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userText, chefName } = req.body || {};
+  const { userText, chefName, sushmithaStage, pendingDishName } = req.body || {};
   if (!userText) {
     return res.status(400).json({ error: 'userText is required' });
   }
@@ -48,9 +48,24 @@ export default async function handler(req, res) {
 
   const isSushmitha = chefName === 'Sushmitha';
 
+  let sushmithaInstruction = '';
+  if (isSushmitha) {
+    if (sushmithaStage === 'awaiting_confirmation') {
+      sushmithaInstruction = `SUSHMITHA CONFIRMATION TURN (Turn 2):
+Sushmitha just replied to your question about cooking ${pendingDishName || 'her dish'}.
+Acknowledge her answer wittily (e.g. "Haha alright Sushmitha, I'll trust your word! Adding it to the staycation menu (keeping the fire extinguisher handy just in case! 😜)"), and confirm that her dish is now added to the menu!`;
+    } else {
+      sushmithaInstruction = `SUSHMITHA DISH INTAKE TURN (Turn 1):
+Sushmitha just named a dish (${userText}). DO NOT confirm adding it yet!
+Ask her a funny, witty doubting question specifically about this dish, like: "Wait, Sushmitha... have you actually tried cooking ${userText} before, or are you experimenting on us for this staycation? 🍕🔥 Are you sure the smoke alarms are safe?"`;
+    }
+  }
+
   const systemPrompt = `
 You are Chef Staycation AI — a warm, casual staycation buddy planning a 6-person feast with your friends.
 Active Chef chatting with you: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
+
+${sushmithaInstruction}
 
 COMPREHENSIVE CULINARY INGREDIENT GENERATION INSTRUCTION:
 1. Determine if the user is introducing/naming a dish or recipe to add to the menu (e.g. "Chicken Biryani", "Baked Salmon", "Pancakes", "Pasta", "Uggu").
@@ -59,17 +74,10 @@ COMPREHENSIVE CULINARY INGREDIENT GENERATION INSTRUCTION:
 
 2. WHEN "isDishEntry" IS TRUE:
    - Generate a COMPREHENSIVE, REALISTIC culinary grocery list of ALL raw ingredients needed to cook that authentic dish for 6 people!
-   - Do NOT limit the ingredients to only what the user explicitly typed! Expand the dish into its complete ingredient list!
-   - For example:
-     - For "Chicken Biryani": Include Chicken, Basmati Rice, Curd / Yogurt, Onions, Ginger & Garlic, Green Chillies, Mint & Coriander, Tomatoes, Ghee / Cooking Oil, Biryani Spices.
-     - For "Baked Salmon": Include Salmon Fillets, Lemon, Garlic, Olive Oil, Black Pepper & Herbs.
-     - For "Pasta": Include Pasta, Tomatoes, Garlic, Cheese, Olive Oil & Herbs.
-   - Use simple clean ingredient names without long compound descriptors.
+   - Do NOT limit ingredients to only what the user explicitly typed! Expand the dish into its complete raw ingredient list!
 
 3. CHAT STYLE:
    - Chat naturally like a real human friend chatting in WhatsApp or Slack! Do NOT sound like a bot or assistant.
-   - For Sushmitha: Playfully tease her cooking skills for the specific dish she names, wittily asking if she's cooked it before or if the smoke alarm will be tested!
-   - For greetings/casual talk: Reply casually as a friend and ask what dish they're thinking of bringing!
 
 Return ONLY a raw JSON object matching this schema:
 {
