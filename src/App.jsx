@@ -162,12 +162,10 @@ export default function App() {
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
-            borderRadius: '50%',
-            boxShadow: `0 0 45px ${glowColor}, 0 0 90px ${glowColor}`,
-            border: `4px solid ${glowColor}`,
+            objectFit: 'contain',
+            filter: `drop-shadow(0 0 25px ${glowColor}) drop-shadow(0 0 45px ${glowColor})`,
             transform: `scale(${scale})`,
-            transition: 'border-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease'
+            transition: 'filter 0.3s ease, transform 0.15s ease'
           }}
         />
       </div>
