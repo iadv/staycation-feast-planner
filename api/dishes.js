@@ -48,9 +48,20 @@ export default async function handler(req, res) {
         });
       }
 
+      // Support reading both public & private blobs with authorization header
+      const headers = {
+        authorization: `Bearer ${blobToken}`
+      };
+
       const response = await fetch(`${existingBlob.url}?t=${Date.now()}`, {
+        headers,
         cache: 'no-store'
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch blob contents: HTTP ${response.status}`);
+      }
+
       const dishes = await response.json();
 
       return res.status(200).json({
@@ -68,11 +79,26 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'dishes array is required' });
       }
 
-      const blob = await put('staycation_dishes.json', JSON.stringify(dishes, null, 2), {
-        access: 'public',
-        addRandomSuffix: false,
-        token: blobToken
-      });
+      let blob;
+      try {
+        // Try public access first
+        blob = await put('staycation_dishes.json', JSON.stringify(dishes, null, 2), {
+          access: 'public',
+          addRandomSuffix: false,
+          token: blobToken
+        });
+      } catch (putErr) {
+        if (putErr.message && putErr.message.toLowerCase().includes('private')) {
+          // If store is configured as private, fallback to private access
+          blob = await put('staycation_dishes.json', JSON.stringify(dishes, null, 2), {
+            access: 'private',
+            addRandomSuffix: false,
+            token: blobToken
+          });
+        } else {
+          throw putErr;
+        }
+      }
 
       return res.status(200).json({
         success: true,
