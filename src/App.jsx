@@ -32,6 +32,7 @@ export default function App() {
   const [selectedUser, setSelectedUser] = useState('');
   const [activeMobileTab, setActiveMobileTab] = useState('chat'); // 'chat' | 'dishes' | 'ingredients'
   const [syncStatus, setSyncStatus] = useState('syncing'); // 'synced' | 'saving' | 'local' | 'syncing'
+  const [syncReason, setSyncReason] = useState('');
 
   // LOCAL STORAGE & CLOUD BLOB PERSISTENCE
   const [dishes, setDishes] = useState(() => {
@@ -66,12 +67,15 @@ export default function App() {
       const data = await res.json();
       if (data.isBlobAvailable) {
         setSyncStatus('synced');
+        setSyncReason('Synced with Vercel Cloud Blob');
       } else {
         setSyncStatus('local');
+        setSyncReason(data.message || 'BLOB_READ_WRITE_TOKEN is not set in Vercel Environment Variables.');
       }
     } catch (err) {
       console.warn('Vercel Blob sync fallback to local storage:', err);
       setSyncStatus('local');
+      setSyncReason('Running on local environment without Vercel API backend.');
     }
   };
 
@@ -82,7 +86,9 @@ export default function App() {
     const fetchCloudDishes = async () => {
       try {
         const res = await fetch('/api/dishes');
-        if (!res.ok) throw new Error('API request failed');
+        if (!res.ok) {
+          throw new Error(`API returned HTTP ${res.status}`);
+        }
         const data = await res.json();
 
         if (isMounted) {
@@ -91,22 +97,24 @@ export default function App() {
               setDishes(data.dishes);
               localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
               setSyncStatus('synced');
+              setSyncReason('Synced with Vercel Cloud Blob Store');
             } else if (data.dishes === null) {
-              // Blob storage is connected & active, but first file hasn't been saved yet.
-              // Auto-initialize the Vercel Blob store with current dishes!
               setSyncStatus('synced');
+              setSyncReason('Initializing new Vercel Blob Store...');
               const saved = localStorage.getItem('staycation_dishes');
               const initialToSync = saved ? JSON.parse(saved) : INITIAL_NYNIKA_DISHES;
               saveDishesToCloudAndLocal(initialToSync);
             }
           } else {
             setSyncStatus('local');
+            setSyncReason(data.message || 'BLOB_READ_WRITE_TOKEN missing in Vercel project settings.');
           }
         }
       } catch (err) {
         if (isMounted) {
           console.warn('Cloud Blob fetch fallback to local storage:', err.message);
           setSyncStatus('local');
+          setSyncReason(`Local Mode: ${err.message}. (Backend /api/dishes unreachable or on local server without Vercel token)`);
         }
       }
     };
@@ -140,6 +148,7 @@ export default function App() {
         selectedUser={selectedUser}
         onSelectUser={setSelectedUser}
         syncStatus={syncStatus}
+        syncReason={syncReason}
       />
 
       {/* Mobile Top Segmented Tab Switcher (Visible on Mobile Screens <= 768px) */}

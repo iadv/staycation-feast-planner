@@ -12,7 +12,7 @@ export const STAYCATION_USERS = [
   'Nynika'
 ];
 
-export default function Header({ selectedUser, onSelectUser, syncStatus = 'local' }) {
+export default function Header({ selectedUser, onSelectUser, syncStatus = 'local', syncReason = '' }) {
   const isSushmitha = selectedUser === 'Sushmitha';
   const chefTitle = selectedUser ? CHEF_TITLES[selectedUser] : null;
 
@@ -20,26 +20,26 @@ export default function Header({ selectedUser, onSelectUser, syncStatus = 'local
     switch (syncStatus) {
       case 'synced':
         return (
-          <span className="sync-badge synced" title="Synced with Vercel Cloud Blob (Shared across Desktop & Mobile)">
+          <span className="sync-badge synced" title={syncReason || "Synced with Vercel Cloud Blob (Shared across Desktop & Mobile)"}>
             <Cloud size={13} /> <Check size={12} style={{ marginLeft: '-0.2rem' }} /> Cloud Synced
           </span>
         );
       case 'saving':
         return (
-          <span className="sync-badge saving" title="Saving changes to Vercel Cloud Blob...">
+          <span className="sync-badge saving" title={syncReason || "Saving changes to Vercel Cloud Blob..."}>
             <RefreshCw size={13} className="spin-icon" /> Saving...
           </span>
         );
       case 'syncing':
         return (
-          <span className="sync-badge syncing" title="Checking Vercel Cloud Blob storage...">
+          <span className="sync-badge syncing" title={syncReason || "Checking Vercel Cloud Blob storage..."}>
             <Cloud size={13} /> Connecting...
           </span>
         );
       case 'local':
       default:
         return (
-          <span className="sync-badge local" title="Running in Local Storage mode. Set BLOB_READ_WRITE_TOKEN on Vercel for cross-device sync.">
+          <span className="sync-badge local" title={syncReason || "Running in Local Storage mode. Set BLOB_READ_WRITE_TOKEN on Vercel for cross-device sync."}>
             <HardDrive size={13} /> Local Mode
           </span>
         );
