@@ -86,10 +86,19 @@ export default function App() {
         const data = await res.json();
 
         if (isMounted) {
-          if (data.isBlobAvailable && Array.isArray(data.dishes)) {
-            setDishes(data.dishes);
-            localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
-            setSyncStatus('synced');
+          if (data.isBlobAvailable) {
+            if (Array.isArray(data.dishes)) {
+              setDishes(data.dishes);
+              localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
+              setSyncStatus('synced');
+            } else if (data.dishes === null) {
+              // Blob storage is connected & active, but first file hasn't been saved yet.
+              // Auto-initialize the Vercel Blob store with current dishes!
+              setSyncStatus('synced');
+              const saved = localStorage.getItem('staycation_dishes');
+              const initialToSync = saved ? JSON.parse(saved) : INITIAL_NYNIKA_DISHES;
+              saveDishesToCloudAndLocal(initialToSync);
+            }
           } else {
             setSyncStatus('local');
           }
