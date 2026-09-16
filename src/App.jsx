@@ -3,7 +3,6 @@ import Header from './components/Header';
 import ChatIntake from './components/ChatIntake';
 import DishList from './components/DishList';
 import IngredientsAggregator from './components/IngredientsAggregator';
-import ApiKeyModal from './components/ApiKeyModal';
 
 // Initial default dishes requested by user
 const INITIAL_NYNIKA_DISHES = [
@@ -45,8 +44,6 @@ export default function App() {
     return INITIAL_NYNIKA_DISHES;
   });
 
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
-
   // Save to localStorage whenever dishes state updates
   useEffect(() => {
     try {
@@ -72,11 +69,10 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Header with User Selector & Gemini Status */}
+      {/* Header with User Selector */}
       <Header
         selectedUser={selectedUser}
         onSelectUser={setSelectedUser}
-        onOpenKeyModal={() => setIsKeyModalOpen(true)}
       />
 
       {/* Main Split-Screen Workspace */}
@@ -97,12 +93,6 @@ export default function App() {
           <IngredientsAggregator dishes={dishes} />
         </div>
       </main>
-
-      {/* Gemini API Key Modal */}
-      <ApiKeyModal
-        isOpen={isKeyModalOpen}
-        onClose={() => setIsKeyModalOpen(false)}
-      />
     </div>
   );
 }

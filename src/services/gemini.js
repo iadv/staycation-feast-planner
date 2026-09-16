@@ -1,20 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Helper to get active API key from env or localStorage
+// Helper to get active API key from Vercel env or localStorage
 export const getStoredApiKey = () => {
   return (
     import.meta.env.VITE_GEMINI_API_KEY ||
+    import.meta.env.GEMINI_API_KEY ||
     localStorage.getItem('gemini_api_key') ||
     ''
   );
-};
-
-export const setStoredApiKey = (key) => {
-  if (key) {
-    localStorage.setItem('gemini_api_key', key.trim());
-  } else {
-    localStorage.removeItem('gemini_api_key');
-  }
 };
 
 // Fancy creative titles for chefs
@@ -37,13 +30,13 @@ export const SUSHMITHA_QUICK_REPLIES = [
 ];
 
 /**
- * Main Gemini AI Parsing logic (Ingredients without quantities)
+ * Main Gemini AI Parsing logic
  */
 export async function parseDishWithGemini(userText, chefName) {
   const apiKey = getStoredApiKey();
 
   if (!apiKey) {
-    console.warn('Gemini API key missing. Using smart fallback parser.');
+    console.log('No Gemini API key found in env. Using smart culinary parser.');
     return fallbackParseDish(userText, chefName);
   }
 
@@ -63,24 +56,25 @@ ${
     : `Keep your tone friendly, enthusiastic, and staycation-themed.`
 }
 
-Extract the dish details from user natural language into a JSON object matching this schema:
+The user will input a dish name (e.g. "Baked Salmon", "Butter Chicken", "Pancakes", "Pasta").
+Your job is to extract the dish name AND break it down into its core raw culinary ingredients!
+
+CRITICAL INGREDIENT RULES:
+1. DO NOT use the dish name itself as an ingredient if it includes cooking methods! (e.g. For "Baked Salmon", ingredients MUST be "Salmon", "Lemon", "Garlic", "Olive Oil", "Herbs & Spices").
+2. Remove cooking adjectives ("Baked", "Fried", "Roasted", "Grilled", "Steamed", "Crispy") from ingredient names!
+3. Output ONLY a valid JSON object matching this schema:
 
 {
-  "dishName": "Name of Dish",
+  "dishName": "Name of Dish (e.g. Baked Salmon)",
   "mealType": "Breakfast | Lunch | Dinner | Snack | Dessert",
   "ingredients": [
     {
-      "name": "Ingredient Name (e.g. Salmon, Rice, Lentils, Butter, Lemon)",
+      "name": "Clean Raw Ingredient Name (e.g. Salmon)",
       "category": "Produce | Dairy | Meat & Protein | Bakery | Pantry & Spices | Beverages"
     }
   ],
   "aiReplyMessage": "Your AI reply message here"
 }
-
-IMPORTANT REQUIREMENTS:
-1. Ensure at least 1 valid ingredient is included in the array! If user names a single dish like "Salmon", "Salmon" MUST be included as an ingredient in Meat & Protein category.
-2. Do NOT include quantities or units in ingredients. Just clean ingredient names!
-3. Output ONLY valid JSON matching the schema.
 `;
 
     const result = await model.generateContent([systemPrompt, userText]);
@@ -95,9 +89,7 @@ IMPORTANT REQUIREMENTS:
 
     // Fallback safeguard if AI returned 0 ingredients
     if (!parsedData.ingredients || parsedData.ingredients.length === 0) {
-      parsedData.ingredients = [
-        { name: parsedData.dishName || 'Main Ingredient', category: detectCategory(parsedData.dishName) }
-      ];
+      parsedData.ingredients = expandDishToIngredients(parsedData.dishName);
     }
 
     return {
@@ -105,22 +97,101 @@ IMPORTANT REQUIREMENTS:
       data: parsedData
     };
   } catch (err) {
-    console.error('Gemini API parse error:', err);
+    console.error('Gemini API parse error, using culinary fallback:', err);
     return fallbackParseDish(userText, chefName);
   }
 }
 
+// Culinary dictionary for expanding dishes into real ingredients
+function expandDishToIngredients(dishName) {
+  const lower = (dishName || '').toLowerCase();
+  
+  if (lower.includes('salmon')) {
+    return [
+      { name: 'Salmon', category: 'Meat & Protein' },
+      { name: 'Lemon', category: 'Produce' },
+      { name: 'Garlic', category: 'Produce' },
+      { name: 'Olive Oil', category: 'Pantry & Spices' },
+      { name: 'Black Pepper & Herbs', category: 'Pantry & Spices' }
+    ];
+  } else if (lower.includes('chicken') || lower.includes('biryani')) {
+    return [
+      { name: 'Chicken', category: 'Meat & Protein' },
+      { name: 'Basmati Rice', category: 'Produce' },
+      { name: 'Curd / Yogurt', category: 'Dairy' },
+      { name: 'Onions & Garlic', category: 'Produce' },
+      { name: 'Indian Spices', category: 'Pantry & Spices' }
+    ];
+  } else if (lower.includes('pasta') || lower.includes('spaghetti')) {
+    return [
+      { name: 'Pasta', category: 'Bakery' },
+      { name: 'Tomatoes', category: 'Produce' },
+      { name: 'Garlic', category: 'Produce' },
+      { name: 'Cheese', category: 'Dairy' },
+      { name: 'Olive Oil & Oregano', category: 'Pantry & Spices' }
+    ];
+  } else if (lower.includes('pancake')) {
+    return [
+      { name: 'Pancake Mix / Flour', category: 'Bakery' },
+      { name: 'Milk', category: 'Dairy' },
+      { name: 'Eggs', category: 'Meat & Protein' },
+      { name: 'Maple Syrup', category: 'Pantry & Spices' },
+      { name: 'Butter', category: 'Dairy' }
+    ];
+  } else if (lower.includes('pizza')) {
+    return [
+      { name: 'Pizza Dough / Base', category: 'Bakery' },
+      { name: 'Mozzarella Cheese', category: 'Dairy' },
+      { name: 'Tomato Sauce', category: 'Pantry & Spices' },
+      { name: 'Bell Peppers & Mushrooms', category: 'Produce' }
+    ];
+  } else if (lower.includes('burger')) {
+    return [
+      { name: 'Burger Buns', category: 'Bakery' },
+      { name: 'Patties', category: 'Meat & Protein' },
+      { name: 'Cheese Slices', category: 'Dairy' },
+      { name: 'Lettuce & Tomatoes', category: 'Produce' }
+    ];
+  } else if (lower.includes('salad')) {
+    return [
+      { name: 'Mixed Salad Greens', category: 'Produce' },
+      { name: 'Cucumbers & Tomatoes', category: 'Produce' },
+      { name: 'Olive Oil & Dressing', category: 'Pantry & Spices' }
+    ];
+  } else if (lower.includes('uggu')) {
+    return [
+      { name: 'Rice', category: 'Produce' },
+      { name: 'Lentils', category: 'Produce' }
+    ];
+  } else if (lower.includes('orange')) {
+    return [
+      { name: 'Fresh Oranges', category: 'Produce' }
+    ];
+  }
+
+  // General clean item fallback
+  const cleanName = dishName
+    .replace(/(baked|fried|roasted|grilled|steamed|crispy|special|homemade|curry|masala)/gi, '')
+    .trim();
+
+  return [
+    { name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1), category: detectCategory(cleanName) },
+    { name: 'Olive Oil / Butter', category: 'Dairy' },
+    { name: 'Seasoning & Spices', category: 'Pantry & Spices' }
+  ];
+}
+
 function detectCategory(name) {
   const nLower = (name || '').toLowerCase();
-  if (nLower.includes('salmon') || nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('steak') || nLower.includes('prawn') || nLower.includes('shrimp')) {
+  if (nLower.includes('salmon') || nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('steak') || nLower.includes('prawn')) {
     return 'Meat & Protein';
   } else if (nLower.includes('milk') || nLower.includes('curd') || nLower.includes('butter') || nLower.includes('cheese') || nLower.includes('cream') || nLower.includes('paneer')) {
     return 'Dairy';
-  } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('orange') || nLower.includes('lemon') || nLower.includes('lentil') || nLower.includes('rice') || nLower.includes('salad') || nLower.includes('veg')) {
+  } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('orange') || nLower.includes('lemon') || nLower.includes('lentil') || nLower.includes('rice') || nLower.includes('salad')) {
     return 'Produce';
-  } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti') || nLower.includes('cake') || nLower.includes('pasta')) {
+  } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti') || nLower.includes('pasta')) {
     return 'Bakery';
-  } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water') || nLower.includes('wine') || nLower.includes('beer')) {
+  } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water')) {
     return 'Beverages';
   }
   return 'Pantry & Spices';
@@ -140,7 +211,7 @@ function fallbackParseDish(userText, chefName) {
     mealType = 'Dinner';
   } else if (lower.includes('snack') || lower.includes('fries') || lower.includes('orange')) {
     mealType = 'Snack';
-  } else if (lower.includes('dessert') || lower.includes('cake') || lower.includes('ice cream') || lower.includes('sweet')) {
+  } else if (lower.includes('dessert') || lower.includes('cake') || lower.includes('ice cream')) {
     mealType = 'Dessert';
   }
 
@@ -155,31 +226,8 @@ function fallbackParseDish(userText, chefName) {
   }
   dishName = dishName.charAt(0).toUpperCase() + dishName.slice(1);
 
-  // Extract ingredients
-  const ingredients = [];
-  const parts = userText.split(/,|\n|and/);
-
-  parts.forEach(part => {
-    let name = part
-      .replace(/\d+\s*(g|kg|ml|l|pcs|tbsp|tsp|cup|cups|grams|kilos)?/gi, '')
-      .replace(/(making|cooking|with|need|needs|requires|for 6|people)/gi, '')
-      .trim();
-
-    if (name && name.length > 1) {
-      ingredients.push({
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        category: detectCategory(name)
-      });
-    }
-  });
-
-  // Guarantee at least 1 ingredient exists (e.g. Salmon)
-  if (ingredients.length === 0) {
-    ingredients.push({
-      name: dishName,
-      category: detectCategory(dishName)
-    });
-  }
+  // Expand dish into real underlying ingredients
+  const ingredients = expandDishToIngredients(dishName);
 
   const aiReplyMessage = isSushmitha
     ? `Wait, Sushmitha... are you SURE you've cooked "${dishName}" before without setting off smoke alarms? 🍕🔥 On a scale from boiled water to emergency pizza, how safe are we? 😜 (Added to menu!)`

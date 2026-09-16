@@ -1,6 +1,6 @@
 import React from 'react';
-import { Utensils, Users, Key, Sparkles, ChefHat } from 'lucide-react';
-import { getStoredApiKey, CHEF_TITLES } from '../services/gemini';
+import { Users, ChefHat } from 'lucide-react';
+import { CHEF_TITLES } from '../services/gemini';
 
 export const STAYCATION_USERS = [
   'Sushmitha',
@@ -12,8 +12,7 @@ export const STAYCATION_USERS = [
   'Nynika'
 ];
 
-export default function Header({ selectedUser, onSelectUser, onOpenKeyModal }) {
-  const hasKey = Boolean(getStoredApiKey());
+export default function Header({ selectedUser, onSelectUser }) {
   const isSushmitha = selectedUser === 'Sushmitha';
   const chefTitle = selectedUser ? CHEF_TITLES[selectedUser] : null;
 
@@ -54,12 +53,6 @@ export default function Header({ selectedUser, onSelectUser, onOpenKeyModal }) {
             ))}
           </select>
         </div>
-
-        <button className="api-key-btn" onClick={onOpenKeyModal} title="Configure Gemini API Key">
-          <Key size={16} />
-          <span className={`key-dot ${hasKey ? 'active' : 'inactive'}`} />
-          <span>{hasKey ? 'Gemini AI Ready' : 'Set Gemini Key'}</span>
-        </button>
       </div>
     </header>
   );
