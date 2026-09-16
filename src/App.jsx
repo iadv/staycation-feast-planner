@@ -1,220 +1,176 @@
-import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import ChatIntake from './components/ChatIntake';
-import DishList from './components/DishList';
-import IngredientsAggregator from './components/IngredientsAggregator';
-import { MessageSquare, Utensils, ShoppingBag } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 
-// Initial default dishes requested by user
-const INITIAL_NYNIKA_DISHES = [
-  {
-    id: 'nynika_1',
-    dishName: 'Uggu',
-    chef: 'Nynika',
-    mealType: 'Breakfast',
-    ingredients: [
-      { name: 'Rice', category: 'Produce' },
-      { name: 'Lentils', category: 'Produce' }
-    ]
-  },
-  {
-    id: 'nynika_2',
-    dishName: 'Orange Slices',
-    chef: 'Nynika',
-    mealType: 'Snack',
-    ingredients: [
-      { name: 'Orange', category: 'Produce' }
-    ]
-  }
+const GLOW_COLORS = [
+  '#ff3366',
+  '#33ff99',
+  '#3399ff',
+  '#ffcc00',
+  '#cc33ff',
+  '#ff6600',
+  '#00f5d4',
+  '#7b2cbf'
 ];
 
 export default function App() {
-  const [selectedUser, setSelectedUser] = useState('');
-  const [activeMobileTab, setActiveMobileTab] = useState('chat'); // 'chat' | 'dishes' | 'ingredients'
-  const [syncStatus, setSyncStatus] = useState('syncing'); // 'synced' | 'saving' | 'local' | 'syncing'
-  const [syncReason, setSyncReason] = useState('');
+  const [glowColor, setGlowColor] = useState(GLOW_COLORS[0]);
+  const [scale, setScale] = useState(1);
+  const containerRef = useRef(null);
+  const imageRef = useRef(null);
 
-  // LOCAL STORAGE & CLOUD BLOB PERSISTENCE
-  const [dishes, setDishes] = useState(() => {
-    try {
-      const saved = localStorage.getItem('staycation_dishes');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to load saved dishes:', e);
-    }
-    return INITIAL_NYNIKA_DISHES;
+  // Physics animation state
+  const stateRef = useRef({
+    x: 0,
+    y: 0,
+    vx: 3.5,
+    vy: 2.8,
+    width: 260,
+    height: 260,
+    colorIndex: 0
   });
 
-  const isSavingRef = useRef(false);
-
-  // Save to Vercel Cloud Blob and localStorage
-  const saveDishesToCloudAndLocal = async (updatedDishes) => {
-    isSavingRef.current = true;
-    setDishes(updatedDishes);
-    try {
-      localStorage.setItem('staycation_dishes', JSON.stringify(updatedDishes));
-    } catch (e) {
-      console.error('Failed to persist dishes to localStorage:', e);
-    }
-
-    try {
-      setSyncStatus('saving');
-      const res = await fetch('/api/dishes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dishes: updatedDishes })
-      });
-      const data = await res.json();
-      if (data.isBlobAvailable) {
-        setSyncStatus('synced');
-        setSyncReason('Synced with Vercel Cloud Blob');
-      } else {
-        setSyncStatus('local');
-        setSyncReason(data.message || 'BLOB_READ_WRITE_TOKEN is not set in Vercel Environment Variables.');
-      }
-    } catch (err) {
-      console.warn('Vercel Blob sync fallback to local storage:', err);
-      setSyncStatus('local');
-      setSyncReason('Running on local environment without Vercel API backend.');
-    } finally {
-      isSavingRef.current = false;
-    }
-  };
-
-  // Fetch from Vercel Cloud Blob on load & auto-poll every 8 seconds for cross-device sync
   useEffect(() => {
-    let isMounted = true;
+    let animId;
 
-    const fetchCloudDishes = async () => {
-      if (isSavingRef.current) return; // Skip polling while saving a dish
+    // Center image initially
+    const initPos = () => {
+      const imgWidth = Math.min(300, Math.max(180, window.innerWidth * 0.35));
+      const imgHeight = imgWidth; // square aspect ratio
+      stateRef.current.width = imgWidth;
+      stateRef.current.height = imgHeight;
+      stateRef.current.x = (window.innerWidth - imgWidth) / 2;
+      stateRef.current.y = (window.innerHeight - imgHeight) / 2;
 
-      try {
-        const res = await fetch('/api/dishes');
-        if (!res.ok) {
-          throw new Error(`API returned HTTP ${res.status}`);
-        }
-        const data = await res.json();
-
-        if (isMounted) {
-          if (data.isBlobAvailable) {
-            if (Array.isArray(data.dishes)) {
-              if (data.dishes.length > 0) {
-                setDishes(data.dishes);
-                localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
-              } else {
-                // If cloud returned empty list but local has dishes, seed the cloud!
-                const saved = localStorage.getItem('staycation_dishes');
-                const localToPush = saved ? JSON.parse(saved) : INITIAL_NYNIKA_DISHES;
-                if (localToPush && localToPush.length > 0) {
-                  saveDishesToCloudAndLocal(localToPush);
-                }
-              }
-              setSyncStatus('synced');
-              setSyncReason('Synced with Vercel Cloud Blob Store');
-            } else if (data.dishes === null) {
-              setSyncStatus('synced');
-              setSyncReason('Initializing new Vercel Blob Store...');
-              const saved = localStorage.getItem('staycation_dishes');
-              const initialToSync = saved ? JSON.parse(saved) : INITIAL_NYNIKA_DISHES;
-              saveDishesToCloudAndLocal(initialToSync);
-            }
-          } else {
-            setSyncStatus('local');
-            setSyncReason(data.message || 'BLOB_READ_WRITE_TOKEN missing in Vercel project settings.');
-          }
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.warn('Cloud Blob fetch fallback to local storage:', err.message);
-          setSyncStatus('local');
-          setSyncReason(`Local Mode: ${err.message}. (Backend /api/dishes unreachable or on local server without Vercel token)`);
-        }
-      }
+      // Random initial direction
+      stateRef.current.vx = (Math.random() > 0.5 ? 1 : -1) * (3 + Math.random() * 1.5);
+      stateRef.current.vy = (Math.random() > 0.5 ? 1 : -1) * (2.5 + Math.random() * 1.5);
     };
 
-    fetchCloudDishes();
-    const interval = setInterval(fetchCloudDishes, 8000);
+    initPos();
+
+    const handleResize = () => {
+      const imgWidth = Math.min(300, Math.max(180, window.innerWidth * 0.35));
+      stateRef.current.width = imgWidth;
+      stateRef.current.height = imgWidth;
+      stateRef.current.x = Math.min(stateRef.current.x, window.innerWidth - imgWidth);
+      stateRef.current.y = Math.min(stateRef.current.y, window.innerHeight - imgWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Animation Loop
+    const update = () => {
+      const state = stateRef.current;
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      state.x += state.vx;
+      state.y += state.vy;
+
+      let bounced = false;
+
+      // Bounce Left / Right
+      if (state.x <= 0) {
+        state.x = 0;
+        state.vx = Math.abs(state.vx);
+        bounced = true;
+      } else if (state.x + state.width >= screenW) {
+        state.x = screenW - state.width;
+        state.vx = -Math.abs(state.vx);
+        bounced = true;
+      }
+
+      // Bounce Top / Bottom
+      if (state.y <= 0) {
+        state.y = 0;
+        state.vy = Math.abs(state.vy);
+        bounced = true;
+      } else if (state.y + state.height >= screenH) {
+        state.y = screenH - state.height;
+        state.vy = -Math.abs(state.vy);
+        bounced = true;
+      }
+
+      // Change glow color on bounce
+      if (bounced) {
+        state.colorIndex = (state.colorIndex + 1) % GLOW_COLORS.length;
+        setGlowColor(GLOW_COLORS[state.colorIndex]);
+      }
+
+      // Direct DOM update for smooth 60fps performance
+      if (imageRef.current) {
+        imageRef.current.style.transform = `translate3d(${state.x}px, ${state.y}px, 0px)`;
+      }
+
+      animId = requestAnimationFrame(update);
+    };
+
+    animId = requestAnimationFrame(update);
 
     return () => {
-      isMounted = false;
-      clearInterval(interval);
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
-  const handleAddDish = (newDish) => {
-    const updated = [newDish, ...dishes];
-    saveDishesToCloudAndLocal(updated);
-    if (window.innerWidth <= 768) {
-      setTimeout(() => setActiveMobileTab('dishes'), 1200);
-    }
-  };
+  const handleTap = () => {
+    // Pulse animation on tap
+    setScale(1.2);
+    setTimeout(() => setScale(1), 250);
 
-  const handleDeleteDish = (id) => {
-    const updated = dishes.filter((d) => d.id !== id);
-    saveDishesToCloudAndLocal(updated);
+    // Speed boost on tap
+    stateRef.current.vx *= 1.3;
+    stateRef.current.vy *= 1.3;
+
+    // Cap max speed
+    if (Math.abs(stateRef.current.vx) > 12) stateRef.current.vx *= 0.6;
+    if (Math.abs(stateRef.current.vy) > 12) stateRef.current.vy *= 0.6;
   };
 
   return (
-    <div className="app-container">
-      {/* Header with User Selector & Cloud Sync Badge */}
-      <Header
-        selectedUser={selectedUser}
-        onSelectUser={setSelectedUser}
-        syncStatus={syncStatus}
-        syncReason={syncReason}
-      />
-
-      {/* Mobile Top Segmented Tab Switcher (Visible on Mobile Screens <= 768px) */}
-      <div className="mobile-tab-bar">
-        <button
-          className={`mobile-tab-btn ${activeMobileTab === 'chat' ? 'active' : ''}`}
-          onClick={() => setActiveMobileTab('chat')}
-        >
-          <MessageSquare size={16} />
-          <span>AI Chat</span>
-        </button>
-        <button
-          className={`mobile-tab-btn ${activeMobileTab === 'dishes' ? 'active' : ''}`}
-          onClick={() => setActiveMobileTab('dishes')}
-        >
-          <Utensils size={16} />
-          <span>Menu ({dishes.length})</span>
-        </button>
-        <button
-          className={`mobile-tab-btn ${activeMobileTab === 'ingredients' ? 'active' : ''}`}
-          onClick={() => setActiveMobileTab('ingredients')}
-        >
-          <ShoppingBag size={16} />
-          <span>Shopping List</span>
-        </button>
+    <div
+      ref={containerRef}
+      style={{
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#05070d',
+        overflow: 'hidden',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        margin: 0,
+        padding: 0,
+        cursor: 'pointer',
+        userSelect: 'none'
+      }}
+      onClick={handleTap}
+    >
+      <div
+        ref={imageRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '260px',
+          height: '260px',
+          willChange: 'transform',
+          transition: 'scale 0.15s ease-out'
+        }}
+      >
+        <img
+          src="/brahmanandam.png"
+          alt="Brahmanandam Telugu Meme"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: '50%',
+            boxShadow: `0 0 45px ${glowColor}, 0 0 90px ${glowColor}`,
+            border: `4px solid ${glowColor}`,
+            transform: `scale(${scale})`,
+            transition: 'border-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease'
+          }}
+        />
       </div>
-
-      {/* Main Split-Screen Workspace / Mobile Tabbed View */}
-      <main className={`main-grid mobile-view-${activeMobileTab}`}>
-        {/* Left Side: Natural Language Chat Intake */}
-        <div className="tab-pane-wrapper chat-wrapper">
-          <ChatIntake
-            selectedUser={selectedUser}
-            onAddDish={handleAddDish}
-          />
-        </div>
-
-        {/* Right Side: Dish List + Aggregated Grocery List */}
-        <div className="right-pane">
-          <div className="tab-pane-wrapper dishes-wrapper">
-            <DishList
-              dishes={dishes}
-              onDeleteDish={handleDeleteDish}
-            />
-          </div>
-          <div className="tab-pane-wrapper ingredients-wrapper">
-            <IngredientsAggregator dishes={dishes} />
-          </div>
-        </div>
-      </main>
     </div>
   );
 }
