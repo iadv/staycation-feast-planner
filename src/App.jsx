@@ -3,6 +3,7 @@ import Header from './components/Header';
 import ChatIntake from './components/ChatIntake';
 import DishList from './components/DishList';
 import IngredientsAggregator from './components/IngredientsAggregator';
+import { MessageSquare, Utensils, ShoppingBag } from 'lucide-react';
 
 // Initial default dishes requested by user
 const INITIAL_NYNIKA_DISHES = [
@@ -29,6 +30,7 @@ const INITIAL_NYNIKA_DISHES = [
 
 export default function App() {
   const [selectedUser, setSelectedUser] = useState('');
+  const [activeMobileTab, setActiveMobileTab] = useState('chat'); // 'chat' | 'dishes' | 'ingredients'
 
   // LOCAL STORAGE PERSISTENCE
   const [dishes, setDishes] = useState(() => {
@@ -55,6 +57,10 @@ export default function App() {
 
   const handleAddDish = (newDish) => {
     setDishes((prev) => [newDish, ...prev]);
+    // Automatically switch to dish list tab on mobile when a dish is added so user sees it instantly!
+    if (window.innerWidth <= 768) {
+      setTimeout(() => setActiveMobileTab('dishes'), 1200);
+    }
   };
 
   const handleDeleteDish = (id) => {
@@ -75,22 +81,53 @@ export default function App() {
         onSelectUser={setSelectedUser}
       />
 
-      {/* Main Split-Screen Workspace */}
-      <main className="main-grid">
+      {/* Mobile Top Segmented Tab Switcher (Visible on Mobile Screens <= 768px) */}
+      <div className="mobile-tab-bar">
+        <button
+          className={`mobile-tab-btn ${activeMobileTab === 'chat' ? 'active' : ''}`}
+          onClick={() => setActiveMobileTab('chat')}
+        >
+          <MessageSquare size={16} />
+          <span>AI Chat</span>
+        </button>
+        <button
+          className={`mobile-tab-btn ${activeMobileTab === 'dishes' ? 'active' : ''}`}
+          onClick={() => setActiveMobileTab('dishes')}
+        >
+          <Utensils size={16} />
+          <span>Menu ({dishes.length})</span>
+        </button>
+        <button
+          className={`mobile-tab-btn ${activeMobileTab === 'ingredients' ? 'active' : ''}`}
+          onClick={() => setActiveMobileTab('ingredients')}
+        >
+          <ShoppingBag size={16} />
+          <span>Shopping List</span>
+        </button>
+      </div>
+
+      {/* Main Split-Screen Workspace / Mobile Tabbed View */}
+      <main className={`main-grid mobile-view-${activeMobileTab}`}>
         {/* Left Side: Natural Language Chat Intake */}
-        <ChatIntake
-          selectedUser={selectedUser}
-          onAddDish={handleAddDish}
-        />
+        <div className="tab-pane-wrapper chat-wrapper">
+          <ChatIntake
+            selectedUser={selectedUser}
+            onAddDish={handleAddDish}
+          />
+        </div>
 
         {/* Right Side: Dish List + Aggregated Grocery List */}
         <div className="right-pane">
-          <DishList
-            dishes={dishes}
-            onDeleteDish={handleDeleteDish}
-            onResetDishes={handleResetDishes}
-          />
-          <IngredientsAggregator dishes={dishes} />
+          <div className="tab-pane-wrapper dishes-wrapper">
+            <DishList
+              dishes={dishes}
+              onDeleteDish={handleDeleteDish}
+              onResetDishes={handleResetDishes}
+            />
+          </div>
+          <div className="tab-pane-wrapper ingredients-wrapper">
+            <IngredientsAggregator dishes={dishes} />
+          </div>
         </div>
       </main>
     </div>
