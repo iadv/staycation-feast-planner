@@ -31,8 +31,9 @@ const INITIAL_NYNIKA_DISHES = [
 export default function App() {
   const [selectedUser, setSelectedUser] = useState('');
   const [activeMobileTab, setActiveMobileTab] = useState('chat'); // 'chat' | 'dishes' | 'ingredients'
+  const [syncStatus, setSyncStatus] = useState('syncing'); // 'synced' | 'saving' | 'local' | 'syncing'
 
-  // LOCAL STORAGE PERSISTENCE
+  // LOCAL STORAGE & CLOUD BLOB PERSISTENCE
   const [dishes, setDishes] = useState(() => {
     try {
       const saved = localStorage.getItem('staycation_dishes');
@@ -46,39 +47,90 @@ export default function App() {
     return INITIAL_NYNIKA_DISHES;
   });
 
-  // Save to localStorage whenever dishes state updates
-  useEffect(() => {
+  // Save to Vercel Cloud Blob and localStorage
+  const saveDishesToCloudAndLocal = async (updatedDishes) => {
+    setDishes(updatedDishes);
     try {
-      localStorage.setItem('staycation_dishes', JSON.stringify(dishes));
+      localStorage.setItem('staycation_dishes', JSON.stringify(updatedDishes));
     } catch (e) {
-      console.error('Failed to persist dishes:', e);
+      console.error('Failed to persist dishes to localStorage:', e);
     }
-  }, [dishes]);
+
+    try {
+      setSyncStatus('saving');
+      const res = await fetch('/api/dishes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dishes: updatedDishes })
+      });
+      const data = await res.json();
+      if (data.isBlobAvailable) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('local');
+      }
+    } catch (err) {
+      console.warn('Vercel Blob sync fallback to local storage:', err);
+      setSyncStatus('local');
+    }
+  };
+
+  // Fetch from Vercel Cloud Blob on load & auto-poll every 8 seconds for cross-device sync
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchCloudDishes = async () => {
+      try {
+        const res = await fetch('/api/dishes');
+        if (!res.ok) throw new Error('API request failed');
+        const data = await res.json();
+
+        if (isMounted) {
+          if (data.isBlobAvailable && Array.isArray(data.dishes)) {
+            setDishes(data.dishes);
+            localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
+            setSyncStatus('synced');
+          } else {
+            setSyncStatus('local');
+          }
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.warn('Cloud Blob fetch fallback to local storage:', err.message);
+          setSyncStatus('local');
+        }
+      }
+    };
+
+    fetchCloudDishes();
+    const interval = setInterval(fetchCloudDishes, 8000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleAddDish = (newDish) => {
-    setDishes((prev) => [newDish, ...prev]);
-    // Automatically switch to dish list tab on mobile when a dish is added so user sees it instantly!
+    const updated = [newDish, ...dishes];
+    saveDishesToCloudAndLocal(updated);
     if (window.innerWidth <= 768) {
       setTimeout(() => setActiveMobileTab('dishes'), 1200);
     }
   };
 
   const handleDeleteDish = (id) => {
-    setDishes((prev) => prev.filter((d) => d.id !== id));
-  };
-
-  const handleResetDishes = () => {
-    if (window.confirm('Reset menu back to initial Nynika dishes?')) {
-      setDishes(INITIAL_NYNIKA_DISHES);
-    }
+    const updated = dishes.filter((d) => d.id !== id);
+    saveDishesToCloudAndLocal(updated);
   };
 
   return (
     <div className="app-container">
-      {/* Header with User Selector */}
+      {/* Header with User Selector & Cloud Sync Badge */}
       <Header
         selectedUser={selectedUser}
         onSelectUser={setSelectedUser}
+        syncStatus={syncStatus}
       />
 
       {/* Mobile Top Segmented Tab Switcher (Visible on Mobile Screens <= 768px) */}
@@ -122,7 +174,6 @@ export default function App() {
             <DishList
               dishes={dishes}
               onDeleteDish={handleDeleteDish}
-              onResetDishes={handleResetDishes}
             />
           </div>
           <div className="tab-pane-wrapper ingredients-wrapper">
