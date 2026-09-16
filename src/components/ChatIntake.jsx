@@ -88,21 +88,26 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
       const result = await parseDishWithGemini(text, selectedUser);
 
       if (result.success && result.data) {
-        const dishData = {
-          ...result.data,
-          id: 'dish_' + Date.now(),
-          chef: selectedUser,
-          addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
+        const isDishEntry = result.data.isDishEntry !== false && Boolean(result.data.dishName);
 
-        onAddDish(dishData);
-        triggerConfetti();
+        // ONLY add dish card if user actually entered a dish (not just saying 'hello')
+        if (isDishEntry) {
+          const dishData = {
+            ...result.data,
+            id: 'dish_' + Date.now(),
+            chef: selectedUser,
+            addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+
+          onAddDish(dishData);
+          triggerConfetti();
+        }
 
         const aiReplyObj = {
           id: Date.now() + 1,
           sender: 'ai',
-          text: result.data.aiReplyMessage || `Added ${dishData.dishName} to the menu!`,
-          isRoast: isSushmitha
+          text: result.data.aiReplyMessage || `Added ${result.data.dishName} to the menu!`,
+          isRoast: isSushmitha && isDishEntry
         };
 
         setMessages((prev) => [...prev, aiReplyObj]);
@@ -124,7 +129,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
         {
           id: Date.now() + 1,
           sender: 'ai',
-          text: `An error occurred while parsing the dish. Please try again!`,
+          text: `An error occurred while chatting. Please try again!`,
           isRoast: false
         }
       ]);
@@ -206,7 +211,7 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
             </div>
             <div className="bubble-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <RefreshCw className="animate-spin" size={16} />
-              <span>Analyzing recipe for staycation menu...</span>
+              <span>Chef Staycation AI is typing...</span>
             </div>
           </div>
         )}
@@ -262,8 +267,8 @@ export default function ChatIntake({ selectedUser, onAddDish }) {
               !selectedUser
                 ? "Select your name from the top dropdown first..."
                 : isSushmitha
-                ? "Enter your dish name & ingredients..."
-                : `Describe what ${selectedUser} is cooking (e.g. "Making Uggu with Rice and Lentils")...`
+                ? "Enter your dish name or chat with AI..."
+                : `Describe what ${selectedUser} is cooking or say hi...`
             }
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

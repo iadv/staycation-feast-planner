@@ -39,49 +39,67 @@ const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-fl
  * Main Gemini AI Parsing logic
  */
 export async function parseDishWithGemini(userText, chefName) {
+  // 1. First attempt to call Vercel Serverless Function /api/chat
+  try {
+    const apiRes = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userText, chefName })
+    });
+
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success && json.data) {
+        console.log('Successfully received response from Vercel /api/chat!');
+        return json;
+      }
+    }
+  } catch (err) {
+    console.log('/api/chat server endpoint not reachable, running client-side Gemini execution...');
+  }
+
+  // 2. Client-side SDK Execution
   const apiKey = getStoredApiKey();
 
   if (!apiKey) {
-    console.warn('No Gemini API Key found in environment variables. Using smart culinary parser.');
-    return fallbackParseDish(userText, chefName, 'No Gemini API key found in env file or Vercel settings.');
+    console.warn('No Gemini API Key found. Using smart local parser.');
+    return fallbackParseDish(userText, chefName);
   }
 
   const isSushmitha = chefName === 'Sushmitha';
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const systemPrompt = `
-You are Chef Staycation AI — a fun, warm, casual staycation buddy planning a 6-person feast with your friends.
+You are Chef Staycation AI — a warm, casual staycation buddy planning a 6-person feast with your friends.
 Active Chef chatting with you: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
 
-CONVERSATIONAL CHAT INSTRUCTIONS:
-- Chat naturally like a real human friend chatting in a group chat on WhatsApp or Slack!
-- Do NOT sound like a robotic AI assistant or bot. Speak in a warm, enthusiastic, human tone.
-- For Sushmitha: Playfully tease her about her cooking skills for the specific dish she just mentioned! Ask wittily if she's cooked it before or if the smoke alarm will be tested!
-- For other chefs: Be super encouraging, friendly, and excited about their recipe for our 6-person staycation.
+CHAT & INTENT RULES:
+1. Determine if the user is introducing/naming a dish or recipe to add to the menu (e.g. "Chicken Biryani", "Baked Salmon", "Pancakes", "Making Pasta").
+   - If YES: Set "isDishEntry": true, extract "dishName", "mealType", and clean raw "ingredients".
+   - If NO (e.g. user is saying "Hello", "Hi", "How are you?", "What's up?"): Set "isDishEntry": false, set "dishName": null, and set "ingredients": [].
 
-EXTRACTION INSTRUCTIONS:
-1. Identify the dish name.
-2. Extract clean, raw culinary ingredients for a 6-person shopping list (e.g. For "Baked Salmon", ingredients MUST be "Salmon", "Lemon", "Garlic", "Olive Oil", "Black Pepper"). DO NOT put the dish name itself as an ingredient if it contains cooking methods ("Baked", "Fried", "Grilled")!
+2. CHAT STYLE:
+   - Chat naturally like a real human friend chatting in WhatsApp or Slack! Do NOT sound like a bot or assistant.
+   - For Sushmitha: Playfully tease her cooking skills for the specific dish she names, wittily asking if she's cooked it before or if the smoke alarm will be tested!
+   - For greetings/casual talk: Reply casually as a friend and ask what dish they're thinking of bringing!
 
-OUTPUT FORMAT: Return ONLY a raw JSON object strictly matching this schema:
+Return ONLY a raw JSON object strictly matching this schema:
 {
-  "dishName": "Name of Dish",
+  "isDishEntry": true | false,
+  "dishName": "Name of Dish or null",
   "mealType": "Breakfast | Lunch | Dinner | Snack | Dessert",
   "ingredients": [
     {
-      "name": "Clean Ingredient Name",
+      "name": "Clean Raw Ingredient Name (e.g. Salmon, Rice, Lentils, Curd, Spices)",
       "category": "Produce | Dairy | Meat & Protein | Bakery | Pantry & Spices | Beverages"
     }
   ],
-  "aiReplyMessage": "Your natural human chat reply message here"
+  "aiReplyMessage": "Your natural human chat reply message"
 }
 `;
 
-  let lastErrorMsg = '';
-
   for (const modelName of MODEL_CANDIDATES) {
     try {
-      console.log(`Sending prompt to Gemini model: ${modelName}...`);
       const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent([systemPrompt, userText]);
       const responseText = result.response.text();
@@ -92,13 +110,6 @@ OUTPUT FORMAT: Return ONLY a raw JSON object strictly matching this schema:
         .trim();
 
       const parsedData = JSON.parse(cleanedText);
-
-      // Safeguard: Ensure at least 1 ingredient exists
-      if (!parsedData.ingredients || parsedData.ingredients.length === 0) {
-        parsedData.ingredients = expandDishToIngredients(parsedData.dishName);
-      }
-
-      console.log('Gemini API Response Success:', parsedData);
       return {
         success: true,
         data: parsedData,
@@ -106,13 +117,10 @@ OUTPUT FORMAT: Return ONLY a raw JSON object strictly matching this schema:
       };
     } catch (err) {
       console.error(`Gemini model ${modelName} failed:`, err.message);
-      lastErrorMsg = err.message || String(err);
     }
   }
 
-  // If Gemini model calls failed (e.g. invalid key)
-  console.warn('Gemini API call failed across models. Using fallback parser.', lastErrorMsg);
-  return fallbackParseDish(userText, chefName, lastErrorMsg);
+  return fallbackParseDish(userText, chefName);
 }
 
 // Culinary dictionary for expanding dishes into real ingredients
@@ -196,9 +204,25 @@ function detectCategory(name) {
   return 'Pantry & Spices';
 }
 
-function fallbackParseDish(userText, chefName, apiErrorNotice) {
+function fallbackParseDish(userText, chefName) {
   const isSushmitha = chefName === 'Sushmitha';
-  const lower = userText.toLowerCase();
+  const lower = userText.trim().toLowerCase();
+
+  // Check if user input is just a greeting (e.g. "hello", "hi", "hey")
+  const isGreeting = ['hello', 'hi', 'hey', 'hello!', 'hi!', 'hey!', 'how are you', 'what up', 'yo'].includes(lower);
+
+  if (isGreeting) {
+    return {
+      success: true,
+      data: {
+        isDishEntry: false,
+        dishName: null,
+        mealType: null,
+        ingredients: [],
+        aiReplyMessage: `Hey ${chefName}! 👋 Great to see you! What delicious dish are you planning to make for our staycation?`
+      }
+    };
+  }
 
   let mealType = 'Lunch';
   if (lower.includes('breakfast') || lower.includes('pancake') || lower.includes('egg') || lower.includes('uggu') || lower.includes('dosa')) {
@@ -227,18 +251,14 @@ function fallbackParseDish(userText, chefName, apiErrorNotice) {
     ? `Ooh, ${dishName}! Are you SURE you've cooked this before without triggering smoke alarms, Sushmitha? 😜 On a scale from boiled water to emergency pizza, how safe are we? (Added to the menu!)`
     : `Awesome choice, ${chefName}! "${dishName}" has been added to our staycation feast menu!`;
 
-  if (apiErrorNotice && apiErrorNotice.includes('403 Forbidden')) {
-    aiReplyMessage += ` [Note: Gemini API key error 403 - please check STAYCATION_AI_KEY in Vercel environment variables]`;
-  }
-
   return {
     success: true,
     data: {
+      isDishEntry: true,
       dishName,
       mealType,
       ingredients,
       aiReplyMessage
-    },
-    apiNotice: apiErrorNotice
+    }
   };
 }
