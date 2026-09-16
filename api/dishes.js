@@ -15,32 +15,34 @@ export default async function handler(req, res) {
     return;
   }
 
-  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  // Check standard token name or Vercel store-specific token name
+  const blobToken =
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.staycation_feast_planner_blob_READ_WRITE_TOKEN ||
+    process.env.STAYCATION_FEAST_PLANNER_BLOB_READ_WRITE_TOKEN;
 
   if (!blobToken) {
     return res.status(200).json({
       success: false,
       isBlobAvailable: false,
-      message: 'No BLOB_READ_WRITE_TOKEN environment variable configured on Vercel.'
+      message: 'No BLOB_READ_WRITE_TOKEN found in Vercel environment variables.'
     });
   }
 
   try {
     if (req.method === 'GET') {
-      // Find the existing staycation_dishes.json blob
-      const { blobs } = await list({ prefix: 'staycation_dishes.json' });
-      const existingBlob = blobs.find((b) => b.pathname === 'staycation_dishes.json');
+      const { blobs } = await list({ token: blobToken });
+      const existingBlob = blobs.find((b) => b.pathname.includes('staycation_dishes.json'));
 
       if (!existingBlob) {
         return res.status(200).json({
           success: true,
           isBlobAvailable: true,
           dishes: null,
-          message: 'No dishes blob found yet.'
+          message: 'No dishes blob found in storage yet.'
         });
       }
 
-      // Fetch the raw JSON content from Vercel Blob CDN
       const response = await fetch(`${existingBlob.url}?t=${Date.now()}`, {
         cache: 'no-store'
       });
@@ -61,10 +63,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'dishes array is required' });
       }
 
-      // Overwrite / save staycation_dishes.json in Vercel Blob
       const blob = await put('staycation_dishes.json', JSON.stringify(dishes, null, 2), {
         access: 'public',
-        addRandomSuffix: false
+        addRandomSuffix: false,
+        token: blobToken
       });
 
       return res.status(200).json({
@@ -77,6 +79,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('Vercel Blob dishes endpoint error:', err);
-    return res.status(500).json({ error: err.message || 'Internal Server Error' });
+    return res.status(200).json({
+      success: false,
+      isBlobAvailable: false,
+      message: `Vercel Blob operation failed: ${err.message}`
+    });
   }
 }
