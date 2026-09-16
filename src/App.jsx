@@ -48,8 +48,11 @@ export default function App() {
     return INITIAL_NYNIKA_DISHES;
   });
 
+  const isSavingRef = useRef(false);
+
   // Save to Vercel Cloud Blob and localStorage
   const saveDishesToCloudAndLocal = async (updatedDishes) => {
+    isSavingRef.current = true;
     setDishes(updatedDishes);
     try {
       localStorage.setItem('staycation_dishes', JSON.stringify(updatedDishes));
@@ -76,6 +79,8 @@ export default function App() {
       console.warn('Vercel Blob sync fallback to local storage:', err);
       setSyncStatus('local');
       setSyncReason('Running on local environment without Vercel API backend.');
+    } finally {
+      isSavingRef.current = false;
     }
   };
 
@@ -84,6 +89,8 @@ export default function App() {
     let isMounted = true;
 
     const fetchCloudDishes = async () => {
+      if (isSavingRef.current) return; // Skip polling while saving a dish
+
       try {
         const res = await fetch('/api/dishes');
         if (!res.ok) {
@@ -94,8 +101,17 @@ export default function App() {
         if (isMounted) {
           if (data.isBlobAvailable) {
             if (Array.isArray(data.dishes)) {
-              setDishes(data.dishes);
-              localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
+              if (data.dishes.length > 0) {
+                setDishes(data.dishes);
+                localStorage.setItem('staycation_dishes', JSON.stringify(data.dishes));
+              } else {
+                // If cloud returned empty list but local has dishes, seed the cloud!
+                const saved = localStorage.getItem('staycation_dishes');
+                const localToPush = saved ? JSON.parse(saved) : INITIAL_NYNIKA_DISHES;
+                if (localToPush && localToPush.length > 0) {
+                  saveDishesToCloudAndLocal(localToPush);
+                }
+              }
               setSyncStatus('synced');
               setSyncReason('Synced with Vercel Cloud Blob Store');
             } else if (data.dishes === null) {

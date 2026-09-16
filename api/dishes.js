@@ -37,9 +37,9 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const { blobs } = await list({ token: blobToken });
-      const existingBlob = blobs.find((b) => b.pathname.includes('staycation_dishes.json'));
+      const matchingBlobs = blobs.filter((b) => b.pathname.includes('staycation_dishes.json'));
 
-      if (!existingBlob) {
+      if (!matchingBlobs || matchingBlobs.length === 0) {
         return res.status(200).json({
           success: true,
           isBlobAvailable: true,
@@ -48,12 +48,16 @@ export default async function handler(req, res) {
         });
       }
 
+      // Sort matching blobs by uploadedAt descending (newest first)
+      matchingBlobs.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      const latestBlob = matchingBlobs[0];
+
       // Support reading both public & private blobs with authorization header
       const headers = {
         authorization: `Bearer ${blobToken}`
       };
 
-      const response = await fetch(`${existingBlob.url}?t=${Date.now()}`, {
+      const response = await fetch(`${latestBlob.url}?t=${Date.now()}`, {
         headers,
         cache: 'no-store'
       });
