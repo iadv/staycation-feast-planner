@@ -29,6 +29,9 @@ export const SUSHMITHA_QUICK_REPLIES = [
   "If it fails, we order pizza! 🍕"
 ];
 
+// Models to attempt in order of preference
+const MODEL_CANDIDATES = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+
 /**
  * Main Gemini AI Parsing logic
  */
@@ -36,70 +39,79 @@ export async function parseDishWithGemini(userText, chefName) {
   const apiKey = getStoredApiKey();
 
   if (!apiKey) {
-    console.log('No Gemini API key found in env. Using smart culinary parser.');
-    return fallbackParseDish(userText, chefName);
+    console.warn('No Gemini API Key found in environment variables. Using smart culinary parser.');
+    return fallbackParseDish(userText, chefName, 'No Gemini API key found in env file or Vercel settings.');
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const isSushmitha = chefName === 'Sushmitha';
+  const genAI = new GoogleGenerativeAI(apiKey);
 
-    const isSushmitha = chefName === 'Sushmitha';
-
-    const systemPrompt = `
-You are Chef Staycation AI managing a staycation menu for 6 people.
-Selected Chef: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
+  const systemPrompt = `
+You are Chef Staycation AI, managing a staycation feast for 6 people.
+Active Chef: ${chefName} (${CHEF_TITLES[chefName] || 'Chef'}).
 
 ${
   isSushmitha
-    ? `SPECIAL PERSONA FOR SUSHMITHA: Wittily tease and doubt her cooking skills for the dish she just mentioned, asking if she's cooked it before or if smoke alarms will go off!`
-    : `Keep your tone friendly, enthusiastic, and staycation-themed.`
+    ? `SPECIAL PERSONA FOR SUSHMITHA: Wittily tease and doubt her cooking skills for the dish she just mentioned! Ask if she's cooked it before or if smoke alarms will go off!`
+    : `Keep your tone friendly, warm, conversational, and staycation-themed.`
 }
 
-The user will input a dish name (e.g. "Baked Salmon", "Butter Chicken", "Pancakes", "Pasta").
-Your job is to extract the dish name AND break it down into its core raw culinary ingredients!
+The user will describe a dish (e.g. "Baked Salmon", "Butter Chicken", "Pancakes", "Pasta").
+Your task:
+1. Identify the exact dish name.
+2. Break it down into its core underlying ingredients for a 6-person shopping list (e.g. For "Baked Salmon", ingredients MUST be "Salmon", "Lemon", "Garlic", "Olive Oil", "Black Pepper"). DO NOT put the dish name itself as an ingredient if it has cooking adjectives ("Baked", "Fried", "Grilled")!
+3. Generate a friendly, conversational chat response.
 
-CRITICAL INGREDIENT RULES:
-1. DO NOT use the dish name itself as an ingredient if it includes cooking methods! (e.g. For "Baked Salmon", ingredients MUST be "Salmon", "Lemon", "Garlic", "Olive Oil", "Herbs & Spices").
-2. Remove cooking adjectives ("Baked", "Fried", "Roasted", "Grilled", "Steamed", "Crispy") from ingredient names!
-3. Output ONLY a valid JSON object matching this schema:
-
+OUTPUT FORMAT: Return ONLY a raw JSON object strictly matching this schema:
 {
-  "dishName": "Name of Dish (e.g. Baked Salmon)",
+  "dishName": "Name of Dish",
   "mealType": "Breakfast | Lunch | Dinner | Snack | Dessert",
   "ingredients": [
     {
-      "name": "Clean Raw Ingredient Name (e.g. Salmon)",
+      "name": "Clean Ingredient Name",
       "category": "Produce | Dairy | Meat & Protein | Bakery | Pantry & Spices | Beverages"
     }
   ],
-  "aiReplyMessage": "Your AI reply message here"
+  "aiReplyMessage": "Conversational AI chat reply"
 }
 `;
 
-    const result = await model.generateContent([systemPrompt, userText]);
-    const responseText = result.response.text();
-    
-    const cleanedText = responseText
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim();
+  let lastErrorMsg = '';
 
-    const parsedData = JSON.parse(cleanedText);
+  for (const modelName of MODEL_CANDIDATES) {
+    try {
+      console.log(`Sending prompt to Gemini model: ${modelName}...`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent([systemPrompt, userText]);
+      const responseText = result.response.text();
+      
+      const cleanedText = responseText
+        .replace(/```json/g, '')
+        .replace(/```/g, '')
+        .trim();
 
-    // Fallback safeguard if AI returned 0 ingredients
-    if (!parsedData.ingredients || parsedData.ingredients.length === 0) {
-      parsedData.ingredients = expandDishToIngredients(parsedData.dishName);
+      const parsedData = JSON.parse(cleanedText);
+
+      // Safeguard: Ensure at least 1 ingredient exists
+      if (!parsedData.ingredients || parsedData.ingredients.length === 0) {
+        parsedData.ingredients = expandDishToIngredients(parsedData.dishName);
+      }
+
+      console.log('Gemini API Response Success:', parsedData);
+      return {
+        success: true,
+        data: parsedData,
+        modelUsed: modelName
+      };
+    } catch (err) {
+      console.error(`Gemini model ${modelName} failed:`, err.message);
+      lastErrorMsg = err.message || String(err);
     }
-
-    return {
-      success: true,
-      data: parsedData
-    };
-  } catch (err) {
-    console.error('Gemini API parse error, using culinary fallback:', err);
-    return fallbackParseDish(userText, chefName);
   }
+
+  // If all Gemini model attempts failed (e.g. invalid/revoked API key)
+  console.warn('Gemini API call failed across models. Using fallback parser.', lastErrorMsg);
+  return fallbackParseDish(userText, chefName, lastErrorMsg);
 }
 
 // Culinary dictionary for expanding dishes into real ingredients
@@ -145,19 +157,6 @@ function expandDishToIngredients(dishName) {
       { name: 'Tomato Sauce', category: 'Pantry & Spices' },
       { name: 'Bell Peppers & Mushrooms', category: 'Produce' }
     ];
-  } else if (lower.includes('burger')) {
-    return [
-      { name: 'Burger Buns', category: 'Bakery' },
-      { name: 'Patties', category: 'Meat & Protein' },
-      { name: 'Cheese Slices', category: 'Dairy' },
-      { name: 'Lettuce & Tomatoes', category: 'Produce' }
-    ];
-  } else if (lower.includes('salad')) {
-    return [
-      { name: 'Mixed Salad Greens', category: 'Produce' },
-      { name: 'Cucumbers & Tomatoes', category: 'Produce' },
-      { name: 'Olive Oil & Dressing', category: 'Pantry & Spices' }
-    ];
   } else if (lower.includes('uggu')) {
     return [
       { name: 'Rice', category: 'Produce' },
@@ -169,14 +168,13 @@ function expandDishToIngredients(dishName) {
     ];
   }
 
-  // General clean item fallback
   const cleanName = dishName
     .replace(/(baked|fried|roasted|grilled|steamed|crispy|special|homemade|curry|masala)/gi, '')
     .trim();
 
   return [
     { name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1), category: detectCategory(cleanName) },
-    { name: 'Olive Oil / Butter', category: 'Dairy' },
+    { name: 'Olive Oil / Cooking Oil', category: 'Pantry & Spices' },
     { name: 'Seasoning & Spices', category: 'Pantry & Spices' }
   ];
 }
@@ -197,10 +195,7 @@ function detectCategory(name) {
   return 'Pantry & Spices';
 }
 
-/**
- * Smart Fallback Parser when API Key is missing or call fails
- */
-function fallbackParseDish(userText, chefName) {
+function fallbackParseDish(userText, chefName, apiErrorNotice) {
   const isSushmitha = chefName === 'Sushmitha';
   const lower = userText.toLowerCase();
 
@@ -215,7 +210,6 @@ function fallbackParseDish(userText, chefName) {
     mealType = 'Dessert';
   }
 
-  // Extract dish name
   let dishName = userText
     .split(/,|\n|with|and/)[0]
     .replace(/(making|cooking|add|want to make|dish|for dinner|for lunch)/gi, '')
@@ -226,12 +220,15 @@ function fallbackParseDish(userText, chefName) {
   }
   dishName = dishName.charAt(0).toUpperCase() + dishName.slice(1);
 
-  // Expand dish into real underlying ingredients
   const ingredients = expandDishToIngredients(dishName);
 
-  const aiReplyMessage = isSushmitha
+  let aiReplyMessage = isSushmitha
     ? `Wait, Sushmitha... are you SURE you've cooked "${dishName}" before without setting off smoke alarms? 🍕🔥 On a scale from boiled water to emergency pizza, how safe are we? 😜 (Added to menu!)`
     : `Awesome! "${dishName}" added to the staycation menu by Chef ${chefName}!`;
+
+  if (apiErrorNotice && apiErrorNotice.includes('403 Forbidden')) {
+    aiReplyMessage += ` [Note: Gemini API key error: 403 Forbidden - your API key in env was reported as revoked/invalid on Google Cloud]`;
+  }
 
   return {
     success: true,
@@ -240,6 +237,7 @@ function fallbackParseDish(userText, chefName) {
       mealType,
       ingredients,
       aiReplyMessage
-    }
+    },
+    apiNotice: apiErrorNotice
   };
 }

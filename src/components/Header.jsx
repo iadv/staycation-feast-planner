@@ -48,7 +48,7 @@ export default function Header({ selectedUser, onSelectUser }) {
             <option value="">-- Select Your Name --</option>
             {STAYCATION_USERS.map((user) => (
               <option key={user} value={user}>
-                {user === 'Sushmitha' ? 'Sushmitha 🍕🔥' : user}
+                {user}
               </option>
             ))}
           </select>
