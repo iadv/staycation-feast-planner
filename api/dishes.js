@@ -21,11 +21,16 @@ export default async function handler(req, res) {
     process.env.staycation_feast_planner_blob_READ_WRITE_TOKEN ||
     process.env.STAYCATION_FEAST_PLANNER_BLOB_READ_WRITE_TOKEN;
 
+  // Debug keys present in process.env
+  const blobEnvKeys = Object.keys(process.env).filter(
+    (k) => k.toLowerCase().includes('blob') || k.toLowerCase().includes('token')
+  );
+
   if (!blobToken) {
     return res.status(200).json({
       success: false,
       isBlobAvailable: false,
-      message: 'No BLOB_READ_WRITE_TOKEN found in Vercel environment variables.'
+      message: `BLOB_READ_WRITE_TOKEN missing in server environment. Environment keys found: [${blobEnvKeys.join(', ')}]`
     });
   }
 
