@@ -70,7 +70,7 @@ Extract the dish details from user natural language into a JSON object matching 
   "mealType": "Breakfast | Lunch | Dinner | Snack | Dessert",
   "ingredients": [
     {
-      "name": "Ingredient Name (e.g. Rice, Lentils, Butter, Cheese)",
+      "name": "Ingredient Name (e.g. Salmon, Rice, Lentils, Butter, Lemon)",
       "category": "Produce | Dairy | Meat & Protein | Bakery | Pantry & Spices | Beverages"
     }
   ],
@@ -78,8 +78,9 @@ Extract the dish details from user natural language into a JSON object matching 
 }
 
 IMPORTANT REQUIREMENTS:
-1. Do NOT include quantities or units in ingredients. Just clean ingredient names!
-2. Output ONLY valid JSON matching the schema. Do not output extra text outside JSON.
+1. Ensure at least 1 valid ingredient is included in the array! If user names a single dish like "Salmon", "Salmon" MUST be included as an ingredient in Meat & Protein category.
+2. Do NOT include quantities or units in ingredients. Just clean ingredient names!
+3. Output ONLY valid JSON matching the schema.
 `;
 
     const result = await model.generateContent([systemPrompt, userText]);
@@ -91,6 +92,14 @@ IMPORTANT REQUIREMENTS:
       .trim();
 
     const parsedData = JSON.parse(cleanedText);
+
+    // Fallback safeguard if AI returned 0 ingredients
+    if (!parsedData.ingredients || parsedData.ingredients.length === 0) {
+      parsedData.ingredients = [
+        { name: parsedData.dishName || 'Main Ingredient', category: detectCategory(parsedData.dishName) }
+      ];
+    }
+
     return {
       success: true,
       data: parsedData
@@ -101,18 +110,33 @@ IMPORTANT REQUIREMENTS:
   }
 }
 
+function detectCategory(name) {
+  const nLower = (name || '').toLowerCase();
+  if (nLower.includes('salmon') || nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('steak') || nLower.includes('prawn') || nLower.includes('shrimp')) {
+    return 'Meat & Protein';
+  } else if (nLower.includes('milk') || nLower.includes('curd') || nLower.includes('butter') || nLower.includes('cheese') || nLower.includes('cream') || nLower.includes('paneer')) {
+    return 'Dairy';
+  } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('orange') || nLower.includes('lemon') || nLower.includes('lentil') || nLower.includes('rice') || nLower.includes('salad') || nLower.includes('veg')) {
+    return 'Produce';
+  } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti') || nLower.includes('cake') || nLower.includes('pasta')) {
+    return 'Bakery';
+  } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water') || nLower.includes('wine') || nLower.includes('beer')) {
+    return 'Beverages';
+  }
+  return 'Pantry & Spices';
+}
+
 /**
  * Smart Fallback Parser when API Key is missing or call fails
  */
 function fallbackParseDish(userText, chefName) {
   const isSushmitha = chefName === 'Sushmitha';
-
   const lower = userText.toLowerCase();
-  
+
   let mealType = 'Lunch';
   if (lower.includes('breakfast') || lower.includes('pancake') || lower.includes('egg') || lower.includes('uggu') || lower.includes('dosa')) {
     mealType = 'Breakfast';
-  } else if (lower.includes('dinner') || lower.includes('biryani') || lower.includes('curry') || lower.includes('pasta')) {
+  } else if (lower.includes('dinner') || lower.includes('biryani') || lower.includes('curry') || lower.includes('pasta') || lower.includes('salmon')) {
     mealType = 'Dinner';
   } else if (lower.includes('snack') || lower.includes('fries') || lower.includes('orange')) {
     mealType = 'Snack';
@@ -121,45 +145,40 @@ function fallbackParseDish(userText, chefName) {
   }
 
   // Extract dish name
-  let dishName = userText.split(',')[0].replace(/(making|cooking|add|want to make|dish|for dinner|for lunch)/gi, '').trim();
+  let dishName = userText
+    .split(/,|\n|with|and/)[0]
+    .replace(/(making|cooking|add|want to make|dish|for dinner|for lunch)/gi, '')
+    .trim();
+
   if (!dishName || dishName.length < 2) {
     dishName = `${chefName}'s Special Dish`;
   }
   dishName = dishName.charAt(0).toUpperCase() + dishName.slice(1);
 
-  // Extract ingredient names without quantities
+  // Extract ingredients
   const ingredients = [];
   const parts = userText.split(/,|\n|and/);
 
   parts.forEach(part => {
-    let name = part.replace(/\d+\s*(g|kg|ml|l|pcs|tbsp|tsp|cup|cups|grams|kilos)?/gi, '').replace(/(making|cooking|with|need|needs|requires|for 6|people)/gi, '').trim();
-    
-    if (name && name.length > 1 && !name.toLowerCase().includes(dishName.toLowerCase())) {
-      let category = 'Pantry & Spices';
-      const nLower = name.toLowerCase();
-      if (nLower.includes('chicken') || nLower.includes('mutton') || nLower.includes('fish') || nLower.includes('egg') || nLower.includes('paneer')) {
-        category = nLower.includes('paneer') ? 'Dairy' : 'Meat & Protein';
-      } else if (nLower.includes('milk') || nLower.includes('curd') || nLower.includes('butter') || nLower.includes('cheese') || nLower.includes('cream')) {
-        category = 'Dairy';
-      } else if (nLower.includes('tomato') || nLower.includes('onion') || nLower.includes('garlic') || nLower.includes('orange') || nLower.includes('lemon') || nLower.includes('lentil') || nLower.includes('rice')) {
-        category = 'Produce';
-      } else if (nLower.includes('bread') || nLower.includes('naan') || nLower.includes('bun') || nLower.includes('roti')) {
-        category = 'Bakery';
-      } else if (nLower.includes('coke') || nLower.includes('soda') || nLower.includes('juice') || nLower.includes('water')) {
-        category = 'Beverages';
-      }
+    let name = part
+      .replace(/\d+\s*(g|kg|ml|l|pcs|tbsp|tsp|cup|cups|grams|kilos)?/gi, '')
+      .replace(/(making|cooking|with|need|needs|requires|for 6|people)/gi, '')
+      .trim();
 
+    if (name && name.length > 1) {
       ingredients.push({
         name: name.charAt(0).toUpperCase() + name.slice(1),
-        category
+        category: detectCategory(name)
       });
     }
   });
 
+  // Guarantee at least 1 ingredient exists (e.g. Salmon)
   if (ingredients.length === 0) {
-    ingredients.push(
-      { name: 'Fresh Ingredients & Spices', category: 'Pantry & Spices' }
-    );
+    ingredients.push({
+      name: dishName,
+      category: detectCategory(dishName)
+    });
   }
 
   const aiReplyMessage = isSushmitha

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Utensils, Trash2, Flame, ChefHat, Sparkles } from 'lucide-react';
+import { Utensils, Trash2, Flame, ChefHat, RefreshCw } from 'lucide-react';
 import { CHEF_TITLES } from '../services/gemini';
 
-export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
+export default function DishList({ dishes, onDeleteDish, onResetDishes }) {
   return (
     <div className="panel-card dish-section">
       <div className="panel-header">
@@ -13,6 +13,26 @@ export default function DishList({ dishes, onDeleteDish, onLoadSampleMenu }) {
             {dishes.length} {dishes.length === 1 ? 'Dish' : 'Dishes'}
           </span>
         </div>
+        {onResetDishes && (
+          <button
+            onClick={onResetDishes}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-muted)',
+              fontSize: '0.75rem',
+              padding: '0.3rem 0.6rem',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+            title="Reset menu to default"
+          >
+            <RefreshCw size={12} /> Reset Menu
+          </button>
+        )}
       </div>
 
       {dishes.length === 0 ? (

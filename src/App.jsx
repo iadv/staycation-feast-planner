@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import ChatIntake from './components/ChatIntake';
 import DishList from './components/DishList';
 import IngredientsAggregator from './components/IngredientsAggregator';
 import ApiKeyModal from './components/ApiKeyModal';
 
-// Initial dishes requested by user: ONLY Nynika's 2 items
+// Initial default dishes requested by user
 const INITIAL_NYNIKA_DISHES = [
   {
     id: 'nynika_1',
@@ -29,10 +29,32 @@ const INITIAL_NYNIKA_DISHES = [
 ];
 
 export default function App() {
-  // Start with no user selected by default as requested
   const [selectedUser, setSelectedUser] = useState('');
-  const [dishes, setDishes] = useState(INITIAL_NYNIKA_DISHES);
+
+  // LOCAL STORAGE PERSISTENCE
+  const [dishes, setDishes] = useState(() => {
+    try {
+      const saved = localStorage.getItem('staycation_dishes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to load saved dishes:', e);
+    }
+    return INITIAL_NYNIKA_DISHES;
+  });
+
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+
+  // Save to localStorage whenever dishes state updates
+  useEffect(() => {
+    try {
+      localStorage.setItem('staycation_dishes', JSON.stringify(dishes));
+    } catch (e) {
+      console.error('Failed to persist dishes:', e);
+    }
+  }, [dishes]);
 
   const handleAddDish = (newDish) => {
     setDishes((prev) => [newDish, ...prev]);
@@ -40,6 +62,12 @@ export default function App() {
 
   const handleDeleteDish = (id) => {
     setDishes((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const handleResetDishes = () => {
+    if (window.confirm('Reset menu back to initial Nynika dishes?')) {
+      setDishes(INITIAL_NYNIKA_DISHES);
+    }
   };
 
   return (
@@ -64,6 +92,7 @@ export default function App() {
           <DishList
             dishes={dishes}
             onDeleteDish={handleDeleteDish}
+            onResetDishes={handleResetDishes}
           />
           <IngredientsAggregator dishes={dishes} />
         </div>
